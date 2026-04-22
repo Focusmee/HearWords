@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HearWords</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="page-shell">
+    <header class="topbar">
+      <div class="brand-block">
+        <div class="brand-mark">HW</div>
+        <div>
+          <p class="eyebrow">Warm Study Desk</p>
+          <h1 class="brand-title">HearWords</h1>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <button class="soft-chip" type="button" data-panel-target="service">
+          服务设置
+        </button>
+        <span id="serviceBadge" class="status-pill quiet">连接中</span>
+      </div>
+    </header>
+
+    <section class="hero-panel">
+      <div class="hero-copy">
+        <p class="eyebrow">Desk Layer</p>
+        <h2>把导入、整理、听写，放回一张更安静的学习桌面。</h2>
+        <p>
+          参考 `DESIGN.md` 的暖纸感、手作边框和桌面隐喻，我们把复杂操作收进聚焦面板，
+          让首页更像一张可进入状态的学习桌：先看到目标，再进入任务。
+        </p>
+        <div class="hero-actions">
+          <button class="playful-button primary-button" type="button" data-panel-target="import">
+            打开导入面板
+          </button>
+          <button class="playful-button ghost-button" type="button" data-panel-target="dictation">
+            进入听写面板
+          </button>
+        </div>
+      </div>
+
+      <div class="hero-metrics">
+        <article class="metric-card">
+          <span>词库总量</span>
+          <strong id="totalWords">0</strong>
+        </article>
+        <article class="metric-card matcha">
+          <span>待复习</span>
+          <strong id="dueWords">0</strong>
+        </article>
+        <article class="metric-card lemon">
+          <span>今日新增</span>
+          <strong id="todayWords">0</strong>
+        </article>
+      </div>
+    </section>
+
+    <main class="workspace">
+      <section class="desk-stage">
+        <div class="desk-header">
+          <div>
+            <p class="eyebrow">Desk View</p>
+            <h2>温和学习感桌面</h2>
+          </div>
+          <p class="desk-note">
+            轻拖这些桌面物件，点击后会在中央展开对应的聚焦面板。
+          </p>
+        </div>
+
+        <div class="desk-surface">
+          <div class="sun-glow" aria-hidden="true"></div>
+
+          <button
+            id="importFolder"
+            class="desk-object desk-object-import draggable paper-folder"
+            type="button"
+            aria-expanded="false"
+            aria-controls="importFolderActions"
+          >
+            <span class="folder-shadow" aria-hidden="true"></span>
+            <span class="folder-back" aria-hidden="true"></span>
+            <span class="folder-tab" aria-hidden="true"></span>
+            <span class="folder-paper-stack" aria-hidden="true">
+              <span class="folder-paper paper-a"></span>
+              <span class="folder-paper paper-b"></span>
+              <span class="folder-paper paper-c"></span>
+              <span class="folder-paper paper-d"></span>
+              <span class="folder-clip"></span>
+              <span class="folder-sticker">IMG</span>
+            </span>
+            <span class="folder-front" aria-hidden="true"></span>
+            <span class="folder-flap" aria-hidden="true"></span>
+            <span class="folder-copy">
+              <span class="object-label">Folder</span>
+              <strong>导入材料</strong>
+              <small>图片、PDF、Word、Excel、文本</small>
+            </span>
+            <span id="importFolderActions" class="folder-actions" aria-hidden="true">
+              <span class="folder-action-chip">文件上传</span>
+              <span class="folder-action-chip">OCR 识别</span>
+              <span class="folder-action-chip">内容清洗</span>
+              <span class="folder-action-open">打开导入面板</span>
+            </span>
+          </button>
+
+          <button
+            class="desk-object desk-object-library draggable bookshelf-object"
+            type="button"
+            data-panel-target="library"
+            data-note-target="library"
+            aria-label="桌面词书书架"
+          >
+            <span class="shelf-shadow" aria-hidden="true"></span>
+            <span class="shelf-back" aria-hidden="true"></span>
+            <span class="shelf-side shelf-side-left" aria-hidden="true"></span>
+            <span class="shelf-side shelf-side-right" aria-hidden="true"></span>
+            <span class="shelf-book book-cet4" data-shelf-filter="cet4" title="CET4 词书"><span class="book-index">CET4</span></span>
+            <span class="shelf-book book-cet6" data-shelf-filter="cet6" title="CET6 词书"><span class="book-index">CET6</span></span>
+            <span class="shelf-book book-pg" data-shelf-filter="postgraduate" title="考研词书"><span class="book-index">PG</span></span>
+            <span class="shelf-book book-custom" data-shelf-filter="custom" title="自定义词书"><span class="book-index">DIY</span></span>
+            <span class="shelf-book book-archive" data-shelf-filter="all" title="全部词书"><span class="book-index">ALL</span></span>
+            <span class="shelf-book book-mixed" data-shelf-filter="recent" title="最近词书"><span class="book-index">NEW</span></span>
+            <span class="shelf-base" aria-hidden="true"></span>
+            <span class="shelf-copy">
+              <span class="object-label">Bookshelf</span>
+              <strong id="deskShelfTitle">我的词书</strong>
+              <small id="deskLibraryHint">整理词库并发起复习</small>
+              <span id="deskShelfMeta" class="shelf-meta">点击书本筛选词书</span>
+            </span>
+            <span class="shelf-actions" aria-hidden="true">
+              <span class="shelf-chip">词库分类</span>
+              <span class="shelf-chip">来源筛选</span>
+              <span class="shelf-chip">开始复习</span>
+            </span>
+          </button>
+
+          <button
+            class="desk-object desk-object-history draggable paper-notebook"
+            type="button"
+            data-panel-target="history"
+            data-note-target="history"
+            aria-label="桌面解析记录笔记本"
+          >
+            <span class="notebook-shadow" aria-hidden="true"></span>
+            <span class="notebook-pages" aria-hidden="true"></span>
+            <span class="notebook-page-edges" aria-hidden="true">
+              <span class="page-edge edge-a"></span>
+              <span class="page-edge edge-b"></span>
+              <span class="page-edge edge-c"></span>
+            </span>
+            <span class="notebook-bookmark" aria-hidden="true"></span>
+            <span class="notebook-tab tab-a" aria-hidden="true"></span>
+            <span class="notebook-tab tab-b" aria-hidden="true"></span>
+            <span class="notebook-cover" aria-hidden="true"></span>
+            <span class="notebook-binding" aria-hidden="true"></span>
+            <span class="notebook-label" aria-hidden="true">Mistake<br />Journal</span>
+            <span class="notebook-sticky" aria-hidden="true"></span>
+            <span class="notebook-corner" aria-hidden="true"></span>
+            <span class="notebook-copy">
+              <span class="notebook-caption" aria-hidden="true"></span>
+              <span class="object-label">Notebook</span>
+              <strong id="deskHistoryTitle">解析记录</strong>
+              <small id="deskHistoryHint">回看来源与清洗结果</small>
+            </span>
+            <span class="notebook-preview" id="deskHistoryPreview" aria-hidden="true">
+              <span class="notebook-chip" id="deskHistoryCount">0 条记录</span>
+              <span class="notebook-chip" id="deskHistoryLatest">暂无最近导入</span>
+              <span class="notebook-open">打开记录面板</span>
+            </span>
+          </button>
+
+          <button
+            id="deskPlayer"
+            class="desk-object desk-object-player draggable retro-player"
+            type="button"
+            data-panel-target="dictation"
+            data-note-target="dictation"
+            aria-label="桌面听写播放器"
+          >
+            <span class="player-shadow" aria-hidden="true"></span>
+            <span class="player-shell" aria-hidden="true"></span>
+            <span class="player-status-light" aria-hidden="true"></span>
+            <span class="player-sticker" aria-hidden="true">DICT</span>
+            <span class="player-speaker player-speaker-left" aria-hidden="true"></span>
+            <span class="player-speaker player-speaker-right" aria-hidden="true"></span>
+            <span class="player-dial" aria-hidden="true">
+              <span class="player-dial-mark mark-a"></span>
+              <span class="player-dial-mark mark-b"></span>
+              <span class="player-dial-mark mark-c"></span>
+            </span>
+            <span class="player-window" aria-hidden="true">
+              <span class="window-glare"></span>
+              <span class="window-scan"></span>
+              <span class="cassette-reel reel-left"></span>
+              <span class="cassette-reel reel-right"></span>
+              <span class="cassette-strip"></span>
+            </span>
+            <span class="player-copy-card">
+              <span class="player-copy-pin" aria-hidden="true"></span>
+              <span class="player-copy">
+                <span class="object-label">Player</span>
+                <strong id="deskPlayerTitle">开始听写</strong>
+                <small id="deskSessionHint">当前未开始训练</small>
+                <span id="deskPlayerMeta" class="player-meta">点击机身打开面板</span>
+              </span>
+            </span>
+            <span class="player-controls">
+              <span class="player-button" data-player-control="play" title="播放或开始">▶</span>
+              <span class="player-button" data-player-control="pause" title="暂停朗读">❚❚</span>
+              <span class="player-button" data-player-control="replay" title="重播单词">↺</span>
+              <span class="player-button" data-player-control="skip" title="跳过当前单词">≫</span>
+            </span>
+          </button>
+
+          <aside class="desk-sidecard desk-object sticky-status-note">
+            <p class="eyebrow">Desk Status</p>
+            <h3>今天的学习节奏</h3>
+            <div class="sidecard-stack">
+              <div class="sidecard-row">
+                <span>当前词书</span>
+                <strong id="dockCurrentBook">未选择</strong>
+              </div>
+              <div class="sidecard-row">
+                <span>解析模式</span>
+                <strong id="dockCurrentMode">普通模式</strong>
+              </div>
+              <div class="sidecard-row">
+                <span>训练进度</span>
+                <strong id="dockCurrentProgress">0 / 0</strong>
+              </div>
+            </div>
+            <div class="object-note-card">
+              <p class="eyebrow">Object Note</p>
+              <strong id="deskObjectNoteTitle">桌面物件说明</strong>
+              <p id="deskObjectNoteText" class="object-note-text">把鼠标移到右侧物件上，这里会告诉你它是什么以及可以做什么。</p>
+            </div>
+            <button class="playful-button ghost-button sidecard-button" type="button" data-panel-target="library">
+              进入词书面板
+            </button>
+          </aside>
+        </div>
+      </section>
+
+      <section class="focus-preview">
+        <div class="preview-card preview-matcha">
+          <p class="eyebrow">Flow</p>
+          <h3>导入 → 清洗 → 确认</h3>
+          <p id="parseStatus" class="status-copy muted">等待导入内容。</p>
+        </div>
+        <div class="preview-card preview-paper">
+          <p class="eyebrow">Service</p>
+          <h3>后端与 One-API</h3>
+          <p id="serviceStatus" class="status-copy muted">正在连接本地服务。</p>
+        </div>
+        <div class="preview-card preview-slushie">
+          <p class="eyebrow">Session</p>
+          <h3>当前训练状态</h3>
+          <p id="deskInsight" class="status-copy muted">还没有进行中的听写轮次。</p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="focusOverlay" class="focus-overlay" aria-hidden="true">
+    <div class="focus-backdrop" data-close-focus="true"></div>
+    <section class="focus-sheet" role="dialog" aria-modal="true" aria-labelledby="focusTitle">
+      <header class="focus-head">
+        <div>
+          <p id="focusEyebrow" class="eyebrow">Focus Layer</p>
+          <h2 id="focusTitle">聚焦面板</h2>
+          <p id="focusSubtitle" class="focus-subtitle">在这里完成具体操作。</p>
+        </div>
+        <div class="focus-head-actions">
+          <div class="focus-tabs" role="tablist" aria-label="聚焦面板切换">
+            <button class="focus-tab" type="button" data-panel-target="service">服务</button>
+            <button class="focus-tab" type="button" data-panel-target="import">导入</button>
+            <button class="focus-tab" type="button" data-panel-target="library">词书</button>
+            <button class="focus-tab" type="button" data-panel-target="history">记录</button>
+            <button class="focus-tab" type="button" data-panel-target="dictation">听写</button>
+          </div>
+          <button id="closeFocusButton" class="soft-chip" type="button">关闭</button>
+        </div>
+      </header>
+
+      <div class="focus-content">
+        <section class="focus-panel" data-panel="service">
+          <div class="content-grid two-column">
+            <article class="panel-card">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-kicker">Connection</p>
+                  <h3>后端服务与模型设置</h3>
+                </div>
+                <span class="badge neutral">可选增强</span>
+              </div>
+
+              <div class="field-group">
+                <label for="apiBaseUrl">One-API Base URL</label>
+                <input id="apiBaseUrl" type="text" placeholder="https://your-one-api.example.com/v1" />
+              </div>
+
+              <div class="field-group">
+                <label for="apiModel">模型名称</label>
+                <input id="apiModel" type="text" placeholder="gpt-4o-mini / deepseek-chat ..." />
+              </div>
+
+              <div class="field-group">
+                <label for="apiKey">API Key</label>
+                <input id="apiKey" type="password" placeholder="sk-..." />
+              </div>
+
+              <div class="field-group">
+                <label for="apiTimeout">超时（毫秒）</label>
+                <input id="apiTimeout" type="number" min="2000" step="1000" value="10000" />
+              </div>
+
+              <div class="field-group">
+                <label for="apiSystemPrompt">系统提示词</label>
+                <textarea id="apiSystemPrompt" rows="5" placeholder="可选：自定义增强解析的系统提示词。"></textarea>
+              </div>
+
+              <label class="switch">
+                <input id="apiEnabled" type="checkbox" />
+                <span>启用 One-API 增强解析</span>
+              </label>
+
+              <div class="toolbar">
+                <button id="saveSettingsButton" class="playful-button primary-button" type="button">保存设置</button>
+                <button id="reloadSettingsButton" class="playful-button ghost-button" type="button">重新读取</button>
+              </div>
+            </article>
+
+            <article class="panel-card note-card">
+              <p class="eyebrow">Guidance</p>
+              <h3>服务区只放配置，不抢注意力</h3>
+              <p>
+                根据设计文档，复杂设置不应该堆在首页主视野里，所以这里被收纳进一个安静的聚焦卡片中。
+                首页只保留连接状态和学习信号。
+              </p>
+              <ul class="note-list">
+                <li>默认优先本地服务与词典解析。</li>
+                <li>One-API 只作为增强层，不打断基础流程。</li>
+                <li>状态摘要会同步回桌面顶部与预览卡。</li>
+              </ul>
+            </article>
+          </div>
+        </section>
+
+        <section class="focus-panel" data-panel="import">
+          <div class="content-stack">
+            <article class="panel-card">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-kicker">Import</p>
+                  <h3>材料导入与解析</h3>
+                </div>
+                <label class="switch">
+                  <input id="modeToggle" type="checkbox" />
+                  <span>LLM 增强</span>
+                </label>
+              </div>
+
+              <label class="upload-zone" for="fileInput">
+                <input id="fileInput" type="file" accept=".txt,.md,.csv,.json,.pdf,.docx,.xlsx,.png,.jpg,.jpeg" multiple />
+                <span>点击选择文件，或把材料拖到这里</span>
+                <small>支持图片 / PDF / Word / Excel / 文本，图片会尝试 OCR 提取。</small>
+              </label>
+
+              <div class="input-layout">
+                <div class="field-group">
+                  <label for="rawText">识别结果 / 手动补全文本</label>
+                  <textarea id="rawText" rows="10" placeholder="如果 OCR 结果不完整，可以在这里补充，或直接粘贴英文材料。"></textarea>
+                </div>
+
+                <div class="field-group">
+                  <label for="bookNameInput">词书名称</label>
+                  <input id="bookNameInput" type="text" placeholder="例如：考研阅读 Day 1 / TED 演讲 / 小说摘抄" />
+                </div>
+              </div>
+
+              <div class="toolbar">
+                <button id="parseButton" class="playful-button primary-button" type="button">解析为候选词条</button>
+                <button id="seedButton" class="playful-button ghost-button" type="button">载入演示内容</button>
+                <button id="clearInputButton" class="playful-button ghost-button" type="button">清空输入</button>
+              </div>
+            </article>
+
+            <article class="panel-card">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-kicker">Clean & Preview</p>
+                  <h3>候选词条确认</h3>
+                </div>
+                <div class="toolbar compact">
+                  <button id="keepSelectedButton" class="playful-button primary-button" type="button">导入勾选词条</button>
+                  <button id="discardCandidatesButton" class="playful-button ghost-button" type="button">清空候选</button>
+                </div>
+              </div>
+
+              <div class="list-wrap roomy">
+                <table class="word-table">
+                  <thead>
+                    <tr>
+                      <th>保留</th>
+                      <th>单词</th>
+                      <th>释义</th>
+                      <th>例句 / 标签</th>
+                    </tr>
+                  </thead>
+                  <tbody id="candidateBody"></tbody>
+                </table>
+              </div>
+
+              <div class="pager">
+                <span id="candidateCountInfo" class="subtle">暂无候选词条</span>
+                <div class="pager-controls">
+                  <button id="candidatePrevButton" class="playful-button ghost-button" type="button">上一页</button>
+                  <span id="candidatePageInfo" class="subtle">第 0 / 0 页</span>
+                  <button id="candidateNextButton" class="playful-button ghost-button" type="button">下一页</button>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="focus-panel" data-panel="library">
+          <div class="content-stack">
+            <article class="panel-card">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-kicker">Library</p>
+                  <h3>我的单词书</h3>
+                </div>
+                <div class="toolbar compact">
+                  <button id="startDueButton" class="playful-button primary-button" type="button">开始待复习听写</button>
+                  <button id="startAllButton" class="playful-button ghost-button" type="button">听写全部</button>
+                  <button id="exportButton" class="playful-button ghost-button" type="button">导出 JSON</button>
+                </div>
+              </div>
+
+              <div class="library-toolbar">
+                <input id="searchInput" type="search" placeholder="搜索单词、释义或例句" />
+                <select id="filterSelect">
+                  <option value="all">全部</option>
+                  <option value="due">待复习</option>
+                  <option value="new">新词</option>
+                  <option value="mastered">已熟练</option>
+                </select>
+                <select id="sourceFilterSelect">
+                  <option value="all">全部词书 / 来源</option>
+                </select>
+              </div>
+
+              <div class="list-wrap roomy">
+                <table class="word-table">
+                  <thead>
+                    <tr>
+                      <th>单词</th>
+                      <th>释义</th>
+                      <th>例句</th>
+                      <th>熟练度</th>
+                      <th>下次复习</th>
+                      <th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody id="libraryBody"></tbody>
+                </table>
+              </div>
+
+              <div class="pager">
+                <span id="libraryCountInfo" class="subtle">暂无词条</span>
+                <div class="pager-controls">
+                  <button id="libraryPrevButton" class="playful-button ghost-button" type="button">上一页</button>
+                  <span id="libraryPageInfo" class="subtle">第 0 / 0 页</span>
+                  <button id="libraryNextButton" class="playful-button ghost-button" type="button">下一页</button>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="focus-panel" data-panel="history">
+          <div class="content-stack">
+            <article class="panel-card">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-kicker">Trace</p>
+                  <h3>解析历史</h3>
+                </div>
+                <button id="refreshHistoryButton" class="playful-button ghost-button" type="button">刷新历史</button>
+              </div>
+
+              <div class="list-wrap roomy">
+                <table class="word-table">
+                  <thead>
+                    <tr>
+                      <th>时间</th>
+                      <th>词书</th>
+                      <th>来源</th>
+                      <th>模式</th>
+                      <th>结果</th>
+                    </tr>
+                  </thead>
+                  <tbody id="historyBody"></tbody>
+                </table>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="focus-panel" data-panel="dictation">
+          <div class="content-grid two-column">
+            <article class="panel-card dictation-card">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-kicker">Internalize</p>
+                  <h3>听写训练</h3>
+                </div>
+                <div class="toolbar compact">
+                  <button id="speakButton" class="playful-button ghost-button" type="button">播放单词</button>
+                  <button id="speakSentenceButton" class="playful-button ghost-button" type="button">播放例句</button>
+                </div>
+              </div>
+
+              <div id="dictationEmpty" class="empty-state">
+                还没有开始听写。先从词书中开启一轮复习。
+              </div>
+
+              <div id="dictationPanel" class="dictation hidden">
+                <div class="dictation-meta">
+                  <span id="dictationProgress">0 / 0</span>
+                  <span id="dictationHint" class="badge">准备中</span>
+                </div>
+                <h3 id="dictationDefinition">Definition</h3>
+                <p id="dictationSentence" class="sentence"></p>
+                <div class="field-group">
+                  <label for="answerInput">输入你听到的单词</label>
+                  <input id="answerInput" type="text" autocomplete="off" />
+                </div>
+                <div class="toolbar">
+                  <button id="checkButton" class="playful-button primary-button" type="button">检查拼写</button>
+                  <button id="nextButton" class="playful-button ghost-button" type="button">跳过</button>
+                  <button id="resetSessionButton" class="playful-button ghost-button" type="button">重置本轮</button>
+                </div>
+                <div id="feedback" class="status muted">点击播放后开始听写。</div>
+              </div>
+            </article>
+
+            <article class="panel-card note-card">
+              <p class="eyebrow">Mode</p>
+              <h3>让训练面板只保留必要信息</h3>
+              <p>
+                定义、例句、输入和反馈集中在同一张卡里，避免传统多栏工具界面造成的压迫感。
+                这里的阅读顺序就是训练顺序。
+              </p>
+              <ul class="note-list">
+                <li>播放按钮保持在右上角，方便重复朗读。</li>
+                <li>反馈区与输入区贴近，错误信息更容易被及时吸收。</li>
+                <li>桌面状态栏会同步显示训练进度。</li>
+              </ul>
+            </article>
+          </div>
+        </section>
+      </div>
+    </section>
+  </div>
+
+  <footer class="bottom-dock">
+    <div class="dock-item">
+      <span>当前词书</span>
+      <strong id="dockFooterBook">未选择</strong>
+    </div>
+    <div class="dock-item">
+      <span>当前进度</span>
+      <strong id="dockFooterProgress">0 / 0</strong>
+    </div>
+    <div class="dock-item">
+      <span>当前模式</span>
+      <strong id="dockFooterMode">普通模式</strong>
+    </div>
+    <div class="dock-item">
+      <span>复习状态</span>
+      <strong id="dockFooterSession">空闲中</strong>
+    </div>
+  </footer>
+
+  <template id="candidateRowTemplate">
+    <tr>
+      <td><input type="checkbox" class="candidate-check" checked /></td>
+      <td>
+        <strong class="candidate-word"></strong>
+        <div class="subtle candidate-phonetic"></div>
+        <div class="meta-tags candidate-tags"></div>
+      </td>
+      <td class="candidate-definition"></td>
+      <td>
+        <div class="candidate-example"></div>
+        <div class="subtle candidate-meta"></div>
+      </td>
+    </tr>
+  </template>
+
+  <template id="libraryRowTemplate">
+    <tr>
+      <td>
+        <strong class="library-word"></strong>
+        <div class="meta-tags library-tags"></div>
+        <div class="subtle library-original"></div>
+      </td>
+      <td class="library-definition"></td>
+      <td class="library-example"></td>
+      <td class="library-mastery"></td>
+      <td class="library-review"></td>
+      <td class="actions"></td>
+    </tr>
+  </template>
+
+  <template id="historyRowTemplate">
+    <tr>
+      <td class="history-time"></td>
+      <td class="history-book"></td>
+      <td class="history-source"></td>
+      <td class="history-mode"></td>
+      <td class="history-result"></td>
+    </tr>
+  </template>
+
+  <script src="./app.js"></script>
+</body>
+</html>
