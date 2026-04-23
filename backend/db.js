@@ -144,10 +144,13 @@ async function getLibrary() {
     ORDER BY next_review_time ASC, created_at DESC
   `);
 
-  return rows.map((row) => ({
-    ...row,
-    originalForms: safeJson(row.originalFormsJson, [row.rawWord]),
-  }));
+  return rows.map((row) => {
+    const { originalFormsJson, ...rest } = row;
+    return {
+      ...rest,
+      originalForms: safeJson(originalFormsJson, [row.rawWord]),
+    };
+  });
 }
 
 async function upsertLibraryEntry(entry) {

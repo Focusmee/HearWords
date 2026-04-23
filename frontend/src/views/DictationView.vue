@@ -1,9 +1,9 @@
 <template>
   <div class="page-grid">
-    <DictationPlaceholder />
+    <DictationPanel />
   </div>
 </template>
 
 <script setup>
-import DictationPlaceholder from '@/components/dictation/DictationPlaceholder.vue'
+import DictationPanel from '@/components/dictation/DictationPanel.vue'
 </script>

@@ -1,9 +1,9 @@
 <template>
   <div class="page-grid">
-    <LibraryPlaceholder />
+    <LibraryPanel />
   </div>
 </template>
 
 <script setup>
-import LibraryPlaceholder from '@/components/library/LibraryPlaceholder.vue'
+import LibraryPanel from '@/components/library/LibraryPanel.vue'
 </script>
