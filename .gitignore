@@ -8,3 +8,7 @@ data/*
 Thumbs.db
 
 eng.traineddata
+
+frontend/dist/
+backend/data/
+!backend/data/.gitkeep

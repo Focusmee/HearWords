@@ -14,7 +14,7 @@
         ref="fileInputRef"
         class="upload-box__input"
         type="file"
-        accept=".txt,.pdf,.doc,.docx"
+        accept=".txt,.pdf,.doc,.docx,.png,.jpg,.jpeg,image/*"
         @change="onFileChange"
       />
 
@@ -60,11 +60,7 @@ function onFileChange(event) {
     return
   }
 
-  emit('file-selected', {
-    name: file.name,
-    size: file.size,
-    type: file.type
-  })
+  emit('file-selected', file)
 
   event.target.value = ''
 }

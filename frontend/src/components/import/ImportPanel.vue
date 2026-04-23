@@ -2,8 +2,60 @@
   <SectionCard
     title="导入模块"
     eyebrow="Import"
-    description="当前版本只演示组件拆分与静态交互流程，后续可在这里接入真实解析和保存接口。"
+    description="文件（txt / pdf / doc(x) / 图片）→ 提取 / OCR → 解析候选词 → 勾选 → 导入词库"
   >
+    <template #header-extra>
+      <div class="import-header">
+        <label class="import-header__field">
+          <span>Source</span>
+          <input
+            v-model.trim="sourceName"
+            class="import-header__input"
+            placeholder="manual-input"
+            list="source-options"
+          />
+          <datalist id="source-options">
+            <option v-for="name in sourceNameOptions" :key="name" :value="name" />
+          </datalist>
+        </label>
+        <label class="import-header__field">
+          <span>Book</span>
+          <div class="import-header__book">
+            <input
+              v-model.trim="bookName"
+              class="import-header__input"
+              placeholder="未命名词书"
+              list="book-options"
+            />
+            <button type="button" class="import-header__book-button" @click="createNewBook">
+              新建
+            </button>
+          </div>
+          <datalist id="book-options">
+            <option v-for="name in bookNameOptions" :key="name" :value="name" />
+          </datalist>
+        </label>
+        <label class="import-header__field">
+          <span>Mode</span>
+          <select v-model="mode" class="import-header__select">
+            <option value="normal">normal</option>
+            <option value="enhanced">enhanced</option>
+          </select>
+        </label>
+        <label class="import-header__field">
+          <span>候选数</span>
+          <input
+            v-model.number="parseLimit"
+            class="import-header__input"
+            type="number"
+            min="10"
+            :max="parseLimitMax"
+            step="10"
+          />
+        </label>
+      </div>
+    </template>
+
     <div class="import-panel">
       <FileUploadBox
         :selected-file-name="selectedFileName"
@@ -19,12 +71,20 @@
       />
 
       <CandidateList
-        :candidate-words="candidateWords"
+        :candidate-words="visibleCandidates"
         :selected-word-ids="selectedWordIds"
         @toggle-word="toggleWordSelection"
         @select-all="selectAllWords"
         @clear-selection="clearSelection"
       />
+      <div v-if="candidateWords.length > displayLimit" class="import-panel__more">
+        <p class="import-panel__more-text">
+          当前显示 {{ visibleCandidates.length }} / {{ candidateWords.length }} 个候选词
+        </p>
+        <button type="button" class="import-panel__more-button" @click="toggleShowAllCandidates">
+          {{ showAllCandidates ? '收起显示' : '显示全部' }}
+        </button>
+      </div>
 
       <div class="import-panel__footer">
         <div class="import-panel__summary">
@@ -33,70 +93,151 @@
             已选择 {{ selectedWordIds.length }} / {{ candidateWords.length }} 个候选词
           </p>
           <p class="import-panel__hint">
-            {{ saveMessage }}
+            <span v-if="warningMessage">{{ warningMessage }}</span>
+            <span v-else>{{ saveMessage }}</span>
           </p>
+          <p v-if="errorMessage" class="import-panel__error">{{ errorMessage }}</p>
         </div>
 
-        <button
-          type="button"
-          class="import-panel__action"
-          :disabled="selectedWordIds.length === 0"
-          @click="confirmSelection"
-        >
-          确认保存（静态）
-        </button>
+        <div class="import-panel__buttons">
+          <div class="import-panel__autoselect">
+            <input
+              v-model.number="autoSelectCount"
+              class="import-panel__autoselect-input"
+              type="number"
+              min="0"
+              :max="candidateWords.length"
+              step="10"
+              placeholder="0"
+            />
+            <button
+              type="button"
+              class="import-panel__action import-panel__action--ghost"
+              :disabled="candidateWords.length === 0 || !autoSelectCount || isLoading"
+              @click="applyAutoSelect"
+            >
+              选前 N
+            </button>
+          </div>
+          <button
+            type="button"
+            class="import-panel__action import-panel__action--ghost"
+            :disabled="!previewText || isLoading"
+            @click="runParse"
+          >
+            {{ isLoading ? '解析中…' : '解析候选词' }}
+          </button>
+          <button
+            type="button"
+            class="import-panel__action"
+            :disabled="selectedWordIds.length === 0 || isLoading"
+            @click="confirmSelection"
+          >
+            保存到词库
+          </button>
+        </div>
       </div>
     </div>
   </SectionCard>
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import SectionCard from '@/components/common/SectionCard.vue'
 import FileUploadBox from '@/components/import/FileUploadBox.vue'
 import ParsePreview from '@/components/import/ParsePreview.vue'
 import CandidateList from '@/components/import/CandidateList.vue'
+import { importService } from '@/services/import.service.js'
+import { http } from '@/services/http.js'
 
 const defaultPreviewText = `Welcome to HearWords.
-This import panel currently demonstrates component boundaries.
-You can edit the preview text, simulate parsing, and choose candidate words.`
-
-const defaultCandidateWords = [
-  { id: 1, word: 'welcome', source: 'demo parse' },
-  { id: 2, word: 'demonstrates', source: 'demo parse' },
-  { id: 3, word: 'component', source: 'demo parse' },
-  { id: 4, word: 'preview', source: 'demo parse' },
-  { id: 5, word: 'candidate', source: 'demo parse' },
-  { id: 6, word: 'words', source: 'demo parse' }
-]
+Paste text here, or upload a file, then click “解析候选词”.`
 
 const selectedFile = ref(null)
 const previewText = ref(defaultPreviewText)
-const candidateWords = ref([...defaultCandidateWords])
-const selectedWordIds = ref(defaultCandidateWords.slice(0, 3).map((word) => word.id))
-const saveMessage = ref('尚未执行保存，当前为静态交互演示。')
+const candidateWords = ref([])
+const selectedWordIds = ref([])
+const saveMessage = ref('请选择文件或粘贴文本，然后解析候选词。')
+const warningMessage = ref('')
+const errorMessage = ref('')
+const isLoading = ref(false)
+
+const sourceName = ref('manual-input')
+const bookName = ref('未命名词书')
+const mode = ref('normal')
+const parseLimit = ref(300)
+const parseLimitMax = ref(2000)
+const autoSelectCount = ref(0)
+const displayLimit = ref(200)
+const showAllCandidates = ref(false)
+const bookNameOptions = ref([])
+const sourceNameOptions = ref([])
+const libraryLemmaSet = ref(new Set())
 
 const selectedFileName = computed(() => {
   return selectedFile.value?.name || '未选择文件'
 })
 
-function handleFileSelected(file) {
-  selectedFile.value = file
-  previewText.value = `已选择文件：${file.name}
+const visibleCandidates = computed(() => {
+  if (showAllCandidates.value) {
+    return candidateWords.value
+  }
+  return candidateWords.value.slice(0, Math.max(10, Number(displayLimit.value) || 200))
+})
 
-这里仍然是静态预览内容。
-后续可在父组件中接入真实解析逻辑，并将结果继续传给子组件。`
-  candidateWords.value = buildCandidateWords(file.name)
-  selectedWordIds.value = candidateWords.value.slice(0, 2).map((word) => word.id)
-  saveMessage.value = '文件已载入静态预览，请确认候选词。'
+async function handleFileSelected(file) {
+  selectedFile.value = file
+  warningMessage.value = ''
+  errorMessage.value = ''
+
+  if (!file) {
+    return
+  }
+
+  if (file.size > 18 * 1024 * 1024) {
+    errorMessage.value = '文件过大（>18MB），可能超过后端 JSON 解析限制。'
+  }
+
+  saveMessage.value = '已选择文件，正在读取…'
+  candidateWords.value = []
+  selectedWordIds.value = []
+
+  try {
+    if (isImageFile(file)) {
+      const base64 = await readFileAsBase64(file)
+      const ocr = await importService.ocrImage({ imageBase64: base64, filename: file.name })
+      previewText.value = ocr?.text || ''
+      saveMessage.value = `OCR 完成（confidence: ${Math.round(Number(ocr?.confidence || 0))}）`
+      return
+    }
+
+    if (isTextFile(file)) {
+      previewText.value = await file.text()
+      saveMessage.value = '文本已载入，可编辑后解析候选词。'
+      return
+    }
+
+    const base64 = await readFileAsBase64(file)
+    const extracted = await importService.extractDocument({ filename: file.name, fileBase64: base64 })
+    previewText.value = extracted?.text || ''
+    if (typeof extracted?.sourceName === 'string' && extracted.sourceName.trim()) {
+      sourceName.value = extracted.sourceName.trim()
+    }
+    saveMessage.value = `已提取文档文本（${Number(extracted?.characterCount || 0)} chars）`
+  } catch (error) {
+    errorMessage.value = error.message || '文件处理失败'
+    saveMessage.value = '文件处理失败，请检查后端服务是否启动。'
+  }
 }
 
 function loadDemoContent() {
   selectedFile.value = null
   previewText.value = defaultPreviewText
-  candidateWords.value = [...defaultCandidateWords]
-  selectedWordIds.value = defaultCandidateWords.slice(0, 3).map((word) => word.id)
-  saveMessage.value = '已载入演示数据。'
+  candidateWords.value = []
+  selectedWordIds.value = []
+  warningMessage.value = ''
+  errorMessage.value = ''
+  saveMessage.value = '已载入演示文本，可直接解析候选词。'
 }
 
 function resetImportState() {
@@ -104,12 +245,14 @@ function resetImportState() {
   previewText.value = ''
   candidateWords.value = []
   selectedWordIds.value = []
+  warningMessage.value = ''
+  errorMessage.value = ''
   saveMessage.value = '导入状态已清空。'
 }
 
 function handlePreviewTextChange(value) {
   previewText.value = value
-  saveMessage.value = '预览文本已更新，候选词列表保持静态演示状态。'
+  saveMessage.value = '预览文本已更新，可重新解析候选词。'
 }
 
 function toggleWordSelection(wordId) {
@@ -122,37 +265,257 @@ function toggleWordSelection(wordId) {
 }
 
 function selectAllWords() {
-  selectedWordIds.value = candidateWords.value.map((word) => word.id)
+  selectedWordIds.value = visibleCandidates.value.map((word) => word.id)
 }
 
 function clearSelection() {
   selectedWordIds.value = []
 }
 
-function confirmSelection() {
-  const selectedWords = candidateWords.value
+async function runParse() {
+  errorMessage.value = ''
+  warningMessage.value = ''
+
+  const text = String(previewText.value || '').trim()
+  if (!text) {
+    errorMessage.value = '没有可解析的文本。'
+    return
+  }
+
+  isLoading.value = true
+  try {
+    const result = await importService.parseText({
+      text,
+      sourceName: sourceName.value,
+      bookName: bookName.value,
+      mode: mode.value,
+      limit: parseLimit.value
+    })
+    candidateWords.value = Array.isArray(result?.candidates) ? result.candidates : []
+    selectedWordIds.value = candidateWords.value.filter((item) => item.kept).map((item) => item.id)
+    warningMessage.value = result?.warning || ''
+    saveMessage.value = `解析完成：${candidateWords.value.length} 个候选词`
+    showAllCandidates.value = false
+  } catch (error) {
+    errorMessage.value = error.message || '解析失败'
+  } finally {
+    isLoading.value = false
+  }
+}
+
+async function confirmSelection() {
+  errorMessage.value = ''
+  warningMessage.value = ''
+
+  const selectedEntries = candidateWords.value
     .filter((word) => selectedWordIds.value.includes(word.id))
-    .map((word) => word.word)
+    .map((word) => ({
+      ...word,
+      sourceName: sourceName.value || word.sourceName,
+      bookName: bookName.value || word.bookName
+    }))
 
-  saveMessage.value = `已静态确认 ${selectedWords.length} 个词：${selectedWords.join('、')}`
+  if (!selectedEntries.length) {
+    errorMessage.value = '请先选择要导入的候选词。'
+    return
+  }
+
+  const duplicates = []
+  const unique = []
+  const seen = new Set()
+  for (const entry of selectedEntries) {
+    const lemma = String(entry?.lemma || '').trim().toLowerCase()
+    if (!lemma || seen.has(lemma)) {
+      continue
+    }
+    seen.add(lemma)
+    if (libraryLemmaSet.value.has(lemma)) {
+      duplicates.push(lemma)
+      continue
+    }
+    unique.push(entry)
+  }
+
+  if (!unique.length) {
+    errorMessage.value = `所选候选词全部已在词库中（重复 ${duplicates.length} 个）。`
+    return
+  }
+
+  isLoading.value = true
+  try {
+    const result = await importService.importLibrary({ entries: unique })
+    if (Array.isArray(result?.items)) {
+      libraryLemmaSet.value = new Set(result.items.map((item) => String(item.lemma || '').toLowerCase()).filter(Boolean))
+    } else {
+      for (const entry of unique) {
+        libraryLemmaSet.value.add(String(entry.lemma || '').toLowerCase())
+      }
+    }
+    const added = Number(result?.added || 0)
+    const merged = Number(result?.merged || 0)
+    const skipped = Number(result?.skipped || 0)
+    const message = `已导入词库：新增 ${added}，合并 ${merged}，跳过重复 ${skipped}`
+    const localSkippedHint = duplicates.length ? `（前端预检剔除重复 ${duplicates.length}）` : ''
+    saveMessage.value = `${message}${localSkippedHint}`
+
+    const serverDuplicates = Array.isArray(result?.duplicates) ? result.duplicates : []
+    const shown = [...new Set([...duplicates, ...serverDuplicates])].slice(0, 12)
+    warningMessage.value = shown.length ? `重复词（已剔除）：${shown.join('，')}${shown.length >= 12 ? '…' : ''}` : ''
+  } catch (error) {
+    errorMessage.value = error.message || '导入失败'
+  } finally {
+    isLoading.value = false
+  }
 }
 
-function buildCandidateWords(fileName) {
-  const baseName = fileName.replace(/\.[^.]+$/, '')
-  const words = [baseName, 'import', 'preview', 'static', 'candidate', 'review']
-
-  return words.map((word, index) => ({
-    id: index + 1,
-    word: word.toLowerCase(),
-    source: 'file mock'
-  }))
+function toggleShowAllCandidates() {
+  showAllCandidates.value = !showAllCandidates.value
 }
+
+function createNewBook() {
+  const name = window.prompt('请输入新词书名称', bookName.value || '未命名词书')
+  const trimmed = String(name || '').trim()
+  if (!trimmed) {
+    return
+  }
+  bookName.value = trimmed
+  if (!bookNameOptions.value.includes(trimmed)) {
+    bookNameOptions.value = [...bookNameOptions.value, trimmed].sort((a, b) => String(a).localeCompare(String(b)))
+  }
+  saveMessage.value = '已选择新词书名称，导入后会出现在词书列表中。'
+}
+
+function applyAutoSelect() {
+  const count = Math.max(0, Math.floor(Number(autoSelectCount.value) || 0))
+  if (count <= 0) {
+    return
+  }
+  const sorted = [...candidateWords.value].sort((a, b) => {
+    const freqDiff = Number(b.frequency || 0) - Number(a.frequency || 0)
+    if (freqDiff !== 0) {
+      return freqDiff
+    }
+    return String(a.lemma || '').localeCompare(String(b.lemma || ''))
+  })
+  selectedWordIds.value = sorted.slice(0, Math.min(count, sorted.length)).map((item) => item.id)
+}
+
+function isTextFile(file) {
+  if (!file) {
+    return false
+  }
+  if (file.type === 'text/plain') {
+    return true
+  }
+  return /\.txt$/i.test(file.name || '')
+}
+
+function isImageFile(file) {
+  if (!file) {
+    return false
+  }
+  if (String(file.type || '').startsWith('image/')) {
+    return true
+  }
+  return /\.(png|jpg|jpeg)$/i.test(file.name || '')
+}
+
+async function readFileAsBase64(file) {
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(new Error('读取文件失败'))
+    reader.readAsDataURL(file)
+  })
+
+  const commaIndex = dataUrl.indexOf(',')
+  return commaIndex >= 0 ? dataUrl.slice(commaIndex + 1) : ''
+}
+
+onMounted(async () => {
+  try {
+    const [health, settings, library] = await Promise.all([
+      http.get('/api/health'),
+      http.get('/api/settings'),
+      http.get('/api/library')
+    ])
+    const nextMax = Number(settings?.import?.parseLimitMax)
+    if (Number.isFinite(nextMax) && nextMax > 0) {
+      parseLimitMax.value = nextMax
+      if (parseLimit.value > nextMax) {
+        parseLimit.value = nextMax
+      }
+    }
+    if (Array.isArray(library?.items)) {
+      libraryLemmaSet.value = new Set(library.items.map((item) => String(item.lemma || '').toLowerCase()).filter(Boolean))
+    }
+    if (Array.isArray(library?.sources)) {
+      const books = new Set()
+      const sources = new Set()
+      for (const option of library.sources) {
+        if (option?.bookName) {
+          books.add(option.bookName)
+        }
+        if (option?.sourceName) {
+          sources.add(option.sourceName)
+        }
+      }
+      bookNameOptions.value = [...books].sort((a, b) => String(a).localeCompare(String(b)))
+      sourceNameOptions.value = [...sources].sort((a, b) => String(a).localeCompare(String(b)))
+    }
+    if (health && health.dictionaryReady === false) {
+      warningMessage.value = '词典未初始化：请先运行 backend 的 setup:dictionary，再解析/导入。'
+    }
+  } catch {
+    warningMessage.value = '后端服务未就绪：请先启动 backend。'
+  }
+})
 </script>
 
 <style scoped>
 .import-panel {
   display: grid;
   gap: 20px;
+}
+
+.import-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.import-header__field {
+  display: grid;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.import-header__input,
+.import-header__select {
+  min-width: 160px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--color-text);
+}
+
+.import-header__book {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.import-header__book-button {
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 .import-panel__footer {
@@ -191,6 +554,62 @@ function buildCandidateWords(fileName) {
   color: var(--color-text-muted);
 }
 
+.import-panel__error {
+  margin: 10px 0 0;
+  color: #8a2f2f;
+  font-size: 0.92rem;
+}
+
+.import-panel__buttons {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.import-panel__more {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px dashed var(--color-border);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.import-panel__more-text {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.import-panel__more-button {
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.import-panel__autoselect {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.import-panel__autoselect-input {
+  width: 96px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text);
+}
+
 .import-panel__action {
   flex-shrink: 0;
   padding: 12px 18px;
@@ -199,6 +618,12 @@ function buildCandidateWords(fileName) {
   background: var(--color-primary);
   color: #fffaf2;
   cursor: pointer;
+}
+
+.import-panel__action--ghost {
+  border-color: var(--color-border);
+  background: transparent;
+  color: var(--color-text);
 }
 
 .import-panel__action:disabled {
@@ -210,6 +635,10 @@ function buildCandidateWords(fileName) {
   .import-panel__footer {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .import-header {
+    justify-content: flex-start;
   }
 }
 </style>

@@ -24,15 +24,40 @@
         :key="word.id"
         class="candidate-list__item"
       >
-        <label class="candidate-list__label">
-          <input
-            type="checkbox"
-            :checked="selectedWordIds.includes(word.id)"
-            @change="$emit('toggle-word', word.id)"
-          />
-          <span class="candidate-list__word">{{ word.word }}</span>
-        </label>
-        <span class="candidate-list__source">{{ word.source }}</span>
+        <div class="candidate-list__main">
+          <label class="candidate-list__label">
+            <input
+              type="checkbox"
+              :checked="selectedWordIds.includes(word.id)"
+              @change="$emit('toggle-word', word.id)"
+            />
+            <span class="candidate-list__word">{{ word.lemma }}</span>
+          </label>
+          <p
+            class="candidate-list__definition"
+            :class="{ 'candidate-list__definition--clamp': !isExpanded(word.id) }"
+          >
+            {{ word.definition }}
+          </p>
+          <p
+            v-if="word.exampleSentence"
+            class="candidate-list__example"
+            :class="{ 'candidate-list__example--clamp': !isExpanded(word.id) }"
+          >
+            {{ word.exampleSentence }}
+          </p>
+          <button
+            v-if="shouldShowToggle(word)"
+            type="button"
+            class="candidate-list__toggle"
+            @click="toggleExpanded(word.id)"
+          >
+            {{ isExpanded(word.id) ? '收起' : '展开' }}
+          </button>
+        </div>
+        <span class="candidate-list__source">
+          {{ word.pos ? `${word.pos} · ` : '' }}{{ word.sourceName || 'manual-input' }}
+        </span>
       </li>
     </ul>
 
@@ -43,6 +68,8 @@
 </template>
 
 <script setup>
+import { ref } from 'vue'
+
 defineProps({
   candidateWords: {
     type: Array,
@@ -55,6 +82,28 @@ defineProps({
 })
 
 defineEmits(['toggle-word', 'select-all', 'clear-selection'])
+
+const expandedIds = ref(new Set())
+
+function isExpanded(id) {
+  return expandedIds.value.has(id)
+}
+
+function toggleExpanded(id) {
+  const next = new Set(expandedIds.value)
+  if (next.has(id)) {
+    next.delete(id)
+  } else {
+    next.add(id)
+  }
+  expandedIds.value = next
+}
+
+function shouldShowToggle(word) {
+  const definition = String(word?.definition || '')
+  const example = String(word?.exampleSentence || '')
+  return definition.length > 90 || example.length > 90
+}
 </script>
 
 <style scoped>
@@ -113,7 +162,7 @@ defineEmits(['toggle-word', 'select-all', 'clear-selection'])
   display: flex;
   justify-content: space-between;
   gap: 16px;
-  align-items: center;
+  align-items: flex-start;
   padding: 12px 14px;
   border: 1px solid var(--color-border);
   border-radius: 14px;
@@ -127,6 +176,38 @@ defineEmits(['toggle-word', 'select-all', 'clear-selection'])
 
 .candidate-list__word {
   font-weight: 600;
+}
+
+.candidate-list__definition,
+.candidate-list__example {
+  margin: 6px 0 0;
+  color: var(--color-text-muted);
+}
+
+.candidate-list__definition--clamp,
+.candidate-list__example--clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.candidate-list__example {
+  font-size: 0.92rem;
+}
+
+.candidate-list__main {
+  min-width: 0;
+}
+
+.candidate-list__toggle {
+  margin-top: 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
 }
 
 .candidate-list__empty {

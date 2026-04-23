@@ -263,41 +263,42 @@ function compactWhitespace(text) {
     .trim();
 }
 
-function containsLetters(value) {
-  return /[A-Za-z]/.test(value || "");
-}
-
 function decodeXmlEntities(text) {
   return String(text || "")
-    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCharCode(parseInt(code, 16)))
-    .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, "\"")
-    .replace(/&apos;/g, "'");
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
+function normalizeZipPath(...segments) {
+  return segments
+    .filter(Boolean)
+    .join("/")
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "");
 }
 
 function readZipText(zip, entryName) {
-  const entry = zip.getEntry(entryName);
-  if (!entry) {
+  try {
+    const entry = zip.getEntry(entryName);
+    if (!entry) {
+      return "";
+    }
+    return entry.getData().toString("utf8");
+  } catch {
     return "";
   }
-  return entry.getData().toString("utf8");
 }
 
-function normalizeZipPath(baseDir, target) {
-  const joined = path.posix.join(baseDir, target);
-  const normalized = path.posix.normalize(joined);
-  if (!normalized.startsWith("xl/")) {
-    return path.posix.normalize(`xl/${path.posix.basename(normalized)}`);
-  }
-  return normalized;
+function containsLetters(text) {
+  return /[A-Za-z]/.test(String(text || ""));
 }
 
 async function loadPdfJs() {
   if (!pdfjsLibPromise) {
-    pdfjsLibPromise = import("pdfjs-dist/legacy/build/pdf.mjs");
+    pdfjsLibPromise = import("pdfjs-dist/legacy/build/pdf.mjs").then((module) => module.default || module);
   }
   return pdfjsLibPromise;
 }
@@ -305,3 +306,4 @@ async function loadPdfJs() {
 module.exports = {
   extractDocumentText,
 };
+
