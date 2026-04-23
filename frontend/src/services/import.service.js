@@ -7,8 +7,8 @@ export const importService = {
   extractDocument({ filename, fileBase64 }) {
     return http.post('/api/extract-document', { filename, fileBase64 })
   },
-  parseText({ text, sourceName, bookName, mode, limit }) {
-    return http.post('/api/parse', { text, sourceName, bookName, mode, limit })
+  parseText({ text, sourceName, mode, limit }) {
+    return http.post('/api/parse', { text, sourceName, bookName: '', mode, limit })
   },
   importLibrary({ entries }) {
     return http.post('/api/library/import', { entries })

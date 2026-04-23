@@ -3,7 +3,13 @@ const Tesseract = require("tesseract.js");
 const engData = require("@tesseract.js-data/eng");
 const { markdownToPlainText } = require("../utils/markdown");
 
-function createImportService({ parserService, paddleOcrService, textProcessingService, wordRepository, getSettings }) {
+function createImportService({
+  parserService,
+  paddleOcrService,
+  textProcessingService,
+  wordRepository,
+  getSettings,
+}) {
   return {
     async recognizeImage({ imageBase64 }) {
       const normalizedImageBase64 = String(imageBase64 || "");
@@ -126,20 +132,21 @@ function createImportService({ parserService, paddleOcrService, textProcessingSe
 
     async importEntries({ entries }) {
       const normalizedEntries = Array.isArray(entries) ? entries : [];
-      const library = await wordRepository.listLibraryEntries();
-      const merged = await mergeLibraryEntries({
-        library,
+      const imported = await importWordsToLibrary({
         entries: normalizedEntries,
         wordRepository,
       });
       const updatedLibrary = await wordRepository.listLibraryEntries();
 
       return {
-        message: `单词书已更新：新增 ${merged.added} 个，合并 ${merged.merged} 个。`,
-        added: merged.added,
-        merged: merged.merged,
-        skipped: merged.skipped,
-        duplicates: merged.duplicates,
+        message: `词库已更新：新增词条 ${imported.addedWords} 个，更新词条 ${imported.updatedWords} 个，跳过 ${imported.skippedWords} 个。`,
+        added: imported.addedWords,
+        merged: imported.updatedWords,
+        skipped: imported.skippedWords,
+        duplicates: imported.duplicates,
+        addedWords: imported.addedWords,
+        updatedWords: imported.updatedWords,
+        skippedWords: imported.skippedWords,
         items: updatedLibrary,
         stats: buildStats(updatedLibrary),
         sources: buildSourceOptions(updatedLibrary),
@@ -239,7 +246,7 @@ async function parseWithDictionary({ text, sourceName, bookName, limit, textProc
       definition: primary?.definition || `词典未收录 "${lemma}"，待手动补充释义`,
       exampleSentence: primary?.exampleSentence || "",
       sourceName,
-      bookName,
+      bookName: "",
       frequency,
       fromGlossary: Boolean(fromGlossary),
       kept: true,
@@ -326,7 +333,7 @@ async function parseWithOneApi({ text, sourceName, bookName, settings, textProce
         definition: primary?.definition || `词典未收录 "${lemma}"，待手动补充释义`,
         exampleSentence: primary?.exampleSentence || String(item.exampleSentence || "").trim(),
         sourceName,
-        bookName,
+        bookName: "",
         frequency: 1,
         kept: true,
       });
@@ -405,6 +412,146 @@ async function mergeLibraryEntries({ library, entries, wordRepository }) {
   }
 
   return { added, merged, skipped, duplicates };
+}
+
+async function importWordsToBooks({ entries, wordRepository, bookRepository }) {
+  if (!bookRepository) {
+    throw createHttpError(500, "缺少 bookRepository");
+  }
+
+  let addedWords = 0;
+  let addedLinks = 0;
+  let skippedLinks = 0;
+  const duplicates = [];
+  const duplicateSet = new Set();
+  const seen = new Set(); // `${bookName}\n${lemma}`
+
+  const dictionaryMap = wordRepository.findDictionaryEntriesByLemmas
+    ? await wordRepository.findDictionaryEntriesByLemmas((entries || []).map((entry) => entry?.lemma))
+    : null;
+
+  for (const entry of entries || []) {
+    if (entry && entry.kept === false) {
+      continue;
+    }
+
+    const lemma = String(entry?.lemma || "").trim().toLowerCase();
+    if (!lemma) {
+      continue;
+    }
+
+    const bookName = String(entry?.bookName || "未命名词书").trim() || "未命名词书";
+    const sourceName = String(entry?.sourceName || "manual-input").trim() || "manual-input";
+    const key = `${bookName}\n${lemma}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+
+    const dictionaryMatches = dictionaryMap
+      ? (dictionaryMap.get(lemma) || [])
+      : await wordRepository.findDictionaryEntriesByLemma(lemma);
+    const primary = dictionaryMatches[0] || null;
+
+    const book = await bookRepository.ensureBook({ name: bookName });
+    if (!book?.id) {
+      throw createHttpError(500, `无法创建/获取词书：${bookName}`);
+    }
+
+    const ensured = await wordRepository.ensureWordForImport({
+      lemma,
+      rawWord: entry?.rawWord || lemma,
+      pos: primary?.pos || entry?.pos || "",
+      definition: primary?.definition || entry?.definition || "",
+      exampleSentence: primary?.exampleSentence || entry?.exampleSentence || "",
+      sourceName,
+    });
+
+    if (ensured.created) {
+      addedWords += 1;
+    }
+
+    const link = await wordRepository.ensureBookWordLink({
+      bookId: book.id,
+      wordId: ensured.wordId,
+      sourceName,
+    });
+
+    if (link.created) {
+      addedLinks += 1;
+    } else {
+      skippedLinks += 1;
+      if (!duplicateSet.has(lemma) && duplicates.length < 50) {
+        duplicateSet.add(lemma);
+        duplicates.push(lemma);
+      }
+    }
+  }
+
+  return { addedWords, addedLinks, skippedLinks, duplicates };
+}
+
+async function importWordsToLibrary({ entries, wordRepository }) {
+  let addedWords = 0;
+  let updatedWords = 0;
+  let skippedWords = 0;
+  const duplicates = [];
+  const duplicateSet = new Set();
+  const seen = new Set();
+
+  const dictionaryMap = wordRepository.findDictionaryEntriesByLemmas
+    ? await wordRepository.findDictionaryEntriesByLemmas((entries || []).map((entry) => entry?.lemma))
+    : null;
+
+  for (const entry of entries || []) {
+    if (entry && entry.kept === false) {
+      continue;
+    }
+
+    const lemma = String(entry?.lemma || "").trim().toLowerCase();
+    if (!lemma) {
+      continue;
+    }
+
+    if (seen.has(lemma)) {
+      continue;
+    }
+    seen.add(lemma);
+
+    const sourceName = String(entry?.sourceName || "manual-input").trim() || "manual-input";
+
+    const dictionaryMatches = dictionaryMap
+      ? (dictionaryMap.get(lemma) || [])
+      : await wordRepository.findDictionaryEntriesByLemma(lemma);
+    const primary = dictionaryMatches[0] || null;
+
+    const ensured = await wordRepository.ensureWordForImport({
+      lemma,
+      rawWord: entry?.rawWord || lemma,
+      pos: primary?.pos || entry?.pos || "",
+      definition: primary?.definition || entry?.definition || "",
+      exampleSentence: primary?.exampleSentence || entry?.exampleSentence || "",
+      sourceName,
+    });
+
+    if (ensured.created) {
+      addedWords += 1;
+    } else if (ensured.updated) {
+      updatedWords += 1;
+      if (!duplicateSet.has(lemma) && duplicates.length < 50) {
+        duplicateSet.add(lemma);
+        duplicates.push(lemma);
+      }
+    } else {
+      skippedWords += 1;
+      if (!duplicateSet.has(lemma) && duplicates.length < 50) {
+        duplicateSet.add(lemma);
+        duplicates.push(lemma);
+      }
+    }
+  }
+
+  return { addedWords, updatedWords, skippedWords, duplicates };
 }
 
 function buildStats(library) {

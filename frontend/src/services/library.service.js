@@ -18,8 +18,9 @@ function buildQuery(params) {
 }
 
 export const libraryService = {
-  getLibrary() {
-    return http.get('/api/library')
+  getLibrary({ bookName } = {}) {
+    const qs = buildQuery({ bookName })
+    return http.get(`/api/library${qs}`)
   },
   listBooks() {
     return http.get('/api/library/books')
@@ -35,4 +36,3 @@ export const libraryService = {
     return http.delete(`/api/library/${encodeURIComponent(id)}`)
   }
 }
-

@@ -1,8 +1,10 @@
 function createLibraryController({ libraryService, readJsonBody, sendJson }) {
   return {
-    async handleGetLibrary(request, response) {
+    async handleGetLibrary(request, response, url) {
       try {
-        const payload = await libraryService.getLibrarySnapshot();
+        const payload = await libraryService.getLibrarySnapshot({
+          bookName: url?.searchParams?.get("bookName") || "",
+        });
         return sendJson(response, 200, payload);
       } catch (error) {
         return sendJson(response, error.statusCode || 500, { error: error.message || "服务器异常" });
@@ -61,4 +63,3 @@ function createLibraryController({ libraryService, readJsonBody, sendJson }) {
 module.exports = {
   createLibraryController,
 };
-

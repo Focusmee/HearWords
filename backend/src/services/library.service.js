@@ -3,12 +3,13 @@ const DEFAULT_SOURCE_NAME = "manual-input";
 
 function createLibraryService({ wordRepository, bookRepository }) {
   return {
-    async getLibrarySnapshot() {
-      const items = await wordRepository.listLibraryEntries();
+    async getLibrarySnapshot(params = {}) {
+      const bookName = typeof params.bookName === "string" ? params.bookName.trim() : "";
+      const items = await wordRepository.listLibraryEntries({ bookName });
       return {
         items,
         stats: buildStats(items),
-        sources: buildSourceOptions(items),
+        sources: await bookRepository.listLibraryBooks(),
       };
     },
 
@@ -25,11 +26,8 @@ function createLibraryService({ wordRepository, bookRepository }) {
       const sourceName = typeof params.sourceName === "string" ? params.sourceName.trim() : "";
       const query = typeof params.query === "string" ? params.query.trim() : "";
 
-      const library = await wordRepository.listLibraryEntries();
+      const library = await wordRepository.listLibraryEntries({ bookName });
       const filtered = library.filter((entry) => {
-        if (bookName && String(entry.bookName || "").trim() !== bookName) {
-          return false;
-        }
         if (sourceName && String(entry.sourceName || "").trim() !== sourceName) {
           return false;
         }
@@ -88,7 +86,7 @@ function createLibraryService({ wordRepository, bookRepository }) {
         item,
         items: nextLibrary,
         stats: buildStats(nextLibrary),
-        sources: buildSourceOptions(nextLibrary),
+        sources: await bookRepository.listLibraryBooks(),
       };
     },
 
@@ -105,7 +103,7 @@ function createLibraryService({ wordRepository, bookRepository }) {
         message: "单词已删除",
         items: library,
         stats: buildStats(library),
-        sources: buildSourceOptions(library),
+        sources: await bookRepository.listLibraryBooks(),
       };
     },
   };

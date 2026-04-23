@@ -21,10 +21,13 @@ const { createParserService } = require("./src/services/parser.service");
 const { createPaddleOcrService } = require("./src/services/paddle-ocr.service");
 const { createDictationService } = require("./src/services/dictation.service");
 const { createLibraryService } = require("./src/services/library.service");
+const { createBooksService } = require("./src/services/books.service");
 const textProcessingService = require("./src/services/text-processing.service");
 const wordRepository = require("./src/repositories/word.repository");
 const bookRepository = require("./src/repositories/book.repository");
 const dictationSessionRepository = require("./src/repositories/dictation-session.repository");
+const { createBooksController } = require("./src/controllers/books.controller");
+const { createBooksRoutes } = require("./src/routes/books.routes");
 
 const HOST = process.env.HOST || "127.0.0.1";
 const PORT = Number(process.env.PORT || 3000);
@@ -64,6 +67,7 @@ async function bootstrap() {
     paddleOcrService,
     textProcessingService,
     wordRepository,
+    bookRepository,
     getSettings: readSettings,
   });
   const dictationService = createDictationService({
@@ -72,6 +76,9 @@ async function bootstrap() {
   });
   const libraryService = createLibraryService({
     wordRepository,
+    bookRepository,
+  });
+  const booksService = createBooksService({
     bookRepository,
   });
   const importController = createImportController({
@@ -89,9 +96,15 @@ async function bootstrap() {
     readJsonBody,
     sendJson,
   });
+  const booksController = createBooksController({
+    booksService,
+    readJsonBody,
+    sendJson,
+  });
   const importRoutes = createImportRoutes({ importController });
   const dictationRoutes = createDictationRoutes({ dictationController });
   const libraryRoutes = createLibraryRoutes({ libraryController });
+  const booksRoutes = createBooksRoutes({ booksController });
 
   const server = http.createServer(async (request, response) => {
     try {
@@ -106,7 +119,7 @@ async function bootstrap() {
       }
 
       if (url.pathname.startsWith("/api/")) {
-        return handleApi(request, response, url, importRoutes, dictationRoutes, libraryRoutes);
+        return handleApi(request, response, url, importRoutes, dictationRoutes, libraryRoutes, booksRoutes);
       }
 
       return serveStatic(response, url.pathname);
@@ -120,7 +133,7 @@ async function bootstrap() {
   });
 }
 
-async function handleApi(request, response, url, importRoutes, dictationRoutes, libraryRoutes) {
+async function handleApi(request, response, url, importRoutes, dictationRoutes, libraryRoutes, booksRoutes) {
   if (await importRoutes.handle(request, response, url)) {
     return;
   }
@@ -130,9 +143,12 @@ async function handleApi(request, response, url, importRoutes, dictationRoutes, 
   if (await libraryRoutes.handle(request, response, url)) {
     return;
   }
+  if (await booksRoutes.handle(request, response, url)) {
+    return;
+  }
 
   if (request.method === "GET" && url.pathname === "/api/health") {
-    const library = await getLibrary();
+    const library = await wordRepository.listLibraryEntries();
     return sendJson(response, 200, {
       ok: true,
       now: Date.now(),

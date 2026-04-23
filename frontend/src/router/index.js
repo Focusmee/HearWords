@@ -3,6 +3,7 @@ import HomeView from '@/views/HomeView.vue'
 import ImportView from '@/views/ImportView.vue'
 import LibraryView from '@/views/LibraryView.vue'
 import DictationView from '@/views/DictationView.vue'
+import BooksView from '@/views/BooksView.vue'
 
 const routes = [
   {
@@ -27,6 +28,14 @@ const routes = [
     component: LibraryView,
     meta: {
       title: '词库'
+    }
+  },
+  {
+    path: '/books',
+    name: 'books',
+    component: BooksView,
+    meta: {
+      title: '词书'
     }
   },
   {

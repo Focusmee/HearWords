@@ -19,23 +19,6 @@
           </datalist>
         </label>
         <label class="import-header__field">
-          <span>Book</span>
-          <div class="import-header__book">
-            <input
-              v-model.trim="bookName"
-              class="import-header__input"
-              placeholder="未命名词书"
-              list="book-options"
-            />
-            <button type="button" class="import-header__book-button" @click="createNewBook">
-              新建
-            </button>
-          </div>
-          <datalist id="book-options">
-            <option v-for="name in bookNameOptions" :key="name" :value="name" />
-          </datalist>
-        </label>
-        <label class="import-header__field">
           <span>Mode</span>
           <select v-model="mode" class="import-header__select">
             <option value="normal">normal</option>
@@ -163,14 +146,12 @@ const errorMessage = ref('')
 const isLoading = ref(false)
 
 const sourceName = ref('manual-input')
-const bookName = ref('未命名词书')
 const mode = ref('normal')
 const parseLimit = ref(300)
 const parseLimitMax = ref(2000)
 const autoSelectCount = ref(0)
 const displayLimit = ref(200)
 const showAllCandidates = ref(false)
-const bookNameOptions = ref([])
 const sourceNameOptions = ref([])
 const libraryLemmaSet = ref(new Set())
 
@@ -287,7 +268,6 @@ async function runParse() {
     const result = await importService.parseText({
       text,
       sourceName: sourceName.value,
-      bookName: bookName.value,
       mode: mode.value,
       limit: parseLimit.value
     })
@@ -311,8 +291,7 @@ async function confirmSelection() {
     .filter((word) => selectedWordIds.value.includes(word.id))
     .map((word) => ({
       ...word,
-      sourceName: sourceName.value || word.sourceName,
-      bookName: bookName.value || word.bookName
+      sourceName: sourceName.value || word.sourceName
     }))
 
   if (!selectedEntries.length) {
@@ -370,19 +349,6 @@ async function confirmSelection() {
 
 function toggleShowAllCandidates() {
   showAllCandidates.value = !showAllCandidates.value
-}
-
-function createNewBook() {
-  const name = window.prompt('请输入新词书名称', bookName.value || '未命名词书')
-  const trimmed = String(name || '').trim()
-  if (!trimmed) {
-    return
-  }
-  bookName.value = trimmed
-  if (!bookNameOptions.value.includes(trimmed)) {
-    bookNameOptions.value = [...bookNameOptions.value, trimmed].sort((a, b) => String(a).localeCompare(String(b)))
-  }
-  saveMessage.value = '已选择新词书名称，导入后会出现在词书列表中。'
 }
 
 function applyAutoSelect() {
@@ -450,17 +416,12 @@ onMounted(async () => {
       libraryLemmaSet.value = new Set(library.items.map((item) => String(item.lemma || '').toLowerCase()).filter(Boolean))
     }
     if (Array.isArray(library?.sources)) {
-      const books = new Set()
       const sources = new Set()
       for (const option of library.sources) {
-        if (option?.bookName) {
-          books.add(option.bookName)
-        }
         if (option?.sourceName) {
           sources.add(option.sourceName)
         }
       }
-      bookNameOptions.value = [...books].sort((a, b) => String(a).localeCompare(String(b)))
       sourceNameOptions.value = [...sources].sort((a, b) => String(a).localeCompare(String(b)))
     }
     if (health && health.dictionaryReady === false) {
@@ -500,22 +461,6 @@ onMounted(async () => {
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.8);
   color: var(--color-text);
-}
-
-.import-header__book {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.import-header__book-button {
-  padding: 10px 12px;
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--color-text);
-  cursor: pointer;
-  white-space: nowrap;
 }
 
 .import-panel__footer {

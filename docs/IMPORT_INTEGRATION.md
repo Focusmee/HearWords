@@ -63,7 +63,7 @@ npm -C frontend run dev
 ## Import 页面交互流程
 
 1. 选择文件（`txt / pdf / doc / docx / png / jpg / jpeg`），或直接粘贴文本到“文本预览”
-2. 如需可修改 `Source / Book / Mode`（`Book` 可直接输入新名称，或点“新建”快速创建）
+2. 如需可修改 `Source / Mode`
 3. 点击“解析候选词”（调用 `POST /api/parse`）
 4. 勾选候选词，点击“保存到词库”（调用 `POST /api/library/import`）
 
@@ -71,7 +71,7 @@ npm -C frontend run dev
 - “候选数”会作为 `POST /api/parse` 的 `limit` 参数，控制本次解析返回多少个英文单词候选。
 - “选前 N”会按 `frequency`（再按 `lemma`）一键勾选前 N 个候选词，便于按数量导入。
 - “候选数”允许的最大值由后端 `settings.import.parseLimitMax` 控制（默认 2000，可在 `POST /api/settings` 或环境变量 `IMPORT_PARSE_LIMIT_MAX` 中修改）。
-- 导入时会进行去重：已存在于词库的 lemma 会被跳过，并在前端提示重复词列表（最多展示前 12 个）。
+- 导入时会进行去重：已存在于总词库的 `lemma` 会被跳过/合并，并在前端提示重复 lemma（最多展示前 12 个）。
 
 ## API 对接点（前端调用）
 
@@ -79,6 +79,11 @@ npm -C frontend run dev
 - 文档提取：`POST /api/extract-document`，body `{ filename, fileBase64 }`
 - 解析：`POST /api/parse`，body `{ text, sourceName, bookName, mode }`
 - 入库：`POST /api/library/import`，body `{ entries }`
+
+提示：
+- `POST /api/library/import` 只写入总词库，不在导入阶段决定词书归属。
+- 词书操作使用：`GET /api/books`、`POST /api/books`、`POST /api/books/:bookId/words`、`DELETE /api/books/:bookId/words`。
+- `GET /api/library` 支持可选 `?bookName=X`，用于只返回属于词书 `X` 的词条（兼容旧字段）。
 
 ## 备注
 
