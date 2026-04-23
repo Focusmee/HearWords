@@ -67,6 +67,7 @@ async function exec(sql) {
 async function initializeDatabase() {
   await exec(`
     PRAGMA journal_mode = WAL;
+    PRAGMA foreign_keys = ON;
 
     CREATE TABLE IF NOT EXISTS library_entries (
       id TEXT PRIMARY KEY,
@@ -101,6 +102,47 @@ async function initializeDatabase() {
     );
 
     CREATE INDEX IF NOT EXISTS idx_dictionary_lemma ON dictionary_entries(lemma);
+
+    CREATE TABLE IF NOT EXISTS words (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      lemma TEXT NOT NULL UNIQUE,
+      raw_word TEXT,
+      phonetic TEXT,
+      pos TEXT,
+      definition TEXT,
+      example_sentence TEXT,
+      original_forms TEXT,
+      mastery_level INTEGER DEFAULT 0,
+      fail_count INTEGER DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      next_review_time INTEGER NOT NULL,
+      last_source TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_words_review ON words(next_review_time);
+
+    CREATE TABLE IF NOT EXISTS books (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS book_words (
+      book_id INTEGER NOT NULL,
+      word_id INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      last_source TEXT,
+      PRIMARY KEY (book_id, word_id),
+      FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE,
+      FOREIGN KEY (word_id) REFERENCES words(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_book_words_book ON book_words(book_id);
+    CREATE INDEX IF NOT EXISTS idx_book_words_word ON book_words(word_id);
+    CREATE INDEX IF NOT EXISTS idx_book_words_updated ON book_words(word_id, updated_at);
 
     CREATE TABLE IF NOT EXISTS parse_history (
       id TEXT PRIMARY KEY,

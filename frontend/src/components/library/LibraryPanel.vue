@@ -2,10 +2,33 @@
   <SectionCard
     title="词库"
     eyebrow="Library"
-    description="查询词书、查询词条（分页）、编辑词条、删除词条"
+    description="总词库查询、编辑、删除；并支持从总词库批量加入词书（N:M）"
   >
     <template #header-extra>
       <div class="library-header">
+        <label class="library-header__field">
+          <span>加入词书</span>
+          <div class="library-header__assign">
+            <select v-model="assign.bookId" class="library-header__select" :disabled="isLoading">
+              <option value="">请选择</option>
+              <option v-for="book in allBooks" :key="book.id" :value="String(book.id)">
+                {{ book.name }}（{{ book.wordCount }}）
+              </option>
+            </select>
+            <button
+              type="button"
+              class="library-header__action"
+              :disabled="isLoading || !assign.bookId || selectedIds.length === 0"
+              @click="addSelectedToBook"
+            >
+              加入（{{ selectedIds.length }}）
+            </button>
+            <button type="button" class="library-header__action library-header__action--ghost" :disabled="isLoading" @click="promptCreateBook">
+              新建词书
+            </button>
+          </div>
+        </label>
+
         <label class="library-header__field">
           <span>Book</span>
           <select v-model="filters.bookName" class="library-header__select" :disabled="isLoading">
@@ -49,6 +72,7 @@
 
       <div class="library-table">
         <div class="library-table__head">
+          <span></span>
           <span>Lemma</span>
           <span>Raw</span>
           <span>POS</span>
@@ -61,9 +85,24 @@
         </div>
 
         <div v-for="item in items" :key="item.id" class="library-table__row">
+          <div class="library-table__cell">
+            <input
+              type="checkbox"
+              :checked="selectedSet.has(String(item.id))"
+              :disabled="isLoading"
+              @change="toggleSelect(item)"
+            />
+          </div>
           <div class="library-table__cell library-table__cell--strong">
             {{ item.lemma }}
-            <span v-if="item.bookName" class="library-table__badge">{{ item.bookName }}</span>
+            <span v-if="Array.isArray(item.bookNames) && item.bookNames.length" class="library-table__tags">
+              <span v-for="name in item.bookNames.slice(0, 3)" :key="name" class="library-table__badge">
+                {{ name }}
+              </span>
+              <span v-if="item.bookNames.length > 3" class="library-table__badge library-table__badge--muted">
+                +{{ item.bookNames.length - 3 }}
+              </span>
+            </span>
           </div>
           <div class="library-table__cell">{{ item.rawWord || '-' }}</div>
           <div class="library-table__cell">{{ item.pos || '-' }}</div>
@@ -158,16 +197,23 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import SectionCard from '@/components/common/SectionCard.vue'
 import { libraryService } from '@/services/library.service.js'
+import { booksService } from '@/services/books.service.js'
 
 const isLoading = ref(false)
 const errorMessage = ref('')
 const items = ref([])
 const books = ref([])
+const allBooks = ref([])
+const selectedSet = ref(new Set())
 
 const filters = reactive({
   bookName: '',
   sourceName: '',
   query: ''
+})
+
+const assign = reactive({
+  bookId: ''
 })
 
 const pagination = reactive({
@@ -188,13 +234,7 @@ const editor = reactive({
 })
 
 const bookNameOptions = computed(() => {
-  const set = new Set()
-  books.value.forEach((item) => {
-    if (item.bookName) {
-      set.add(item.bookName)
-    }
-  })
-  return [...set.values()].sort((a, b) => a.localeCompare(b))
+  return allBooks.value.map((b) => b.name).sort((a, b) => String(a).localeCompare(String(b)))
 })
 
 const sourceNameOptions = computed(() => {
@@ -213,8 +253,9 @@ const pageCount = computed(() => {
 })
 
 async function refreshBooks() {
-  const payload = await libraryService.listBooks()
-  books.value = Array.isArray(payload?.items) ? payload.items : []
+  const [legacy, modern] = await Promise.all([libraryService.listBooks(), booksService.listBooks()])
+  books.value = Array.isArray(legacy?.items) ? legacy.items : []
+  allBooks.value = Array.isArray(modern?.items) ? modern.items : []
 }
 
 async function refreshEntries() {
@@ -248,12 +289,14 @@ async function load() {
 function applyFilters() {
   pagination.page = 1
   pageInput.value = 1
+  selectedSet.value = new Set()
   load()
 }
 
 function applyPageSize() {
   pagination.page = 1
   pageInput.value = 1
+  selectedSet.value = new Set()
   load()
 }
 
@@ -262,7 +305,58 @@ function goPage(page) {
   const safe = Math.min(Math.max(1, next), pageCount.value)
   pagination.page = safe
   pageInput.value = safe
+  selectedSet.value = new Set()
   load()
+}
+
+const selectedIds = computed(() => {
+  return Array.from(selectedSet.value.values())
+})
+
+function toggleSelect(item) {
+  const id = String(item?.id || '')
+  if (!id) return
+  const next = new Set(selectedSet.value)
+  if (next.has(id)) {
+    next.delete(id)
+  } else {
+    next.add(id)
+  }
+  selectedSet.value = next
+}
+
+async function promptCreateBook() {
+  const name = window.prompt('请输入新词书名称：', '未命名词书')
+  const trimmed = String(name || '').trim()
+  if (!trimmed) return
+  isLoading.value = true
+  errorMessage.value = ''
+  try {
+    await booksService.createBook({ name: trimmed })
+    await refreshBooks()
+  } catch (error) {
+    errorMessage.value = error?.message || '创建词书失败'
+  } finally {
+    isLoading.value = false
+  }
+}
+
+async function addSelectedToBook() {
+  if (!assign.bookId) return
+  const wordIds = selectedIds.value.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
+  if (!wordIds.length) return
+
+  isLoading.value = true
+  errorMessage.value = ''
+  try {
+    await booksService.addWordsToBook(assign.bookId, { wordIds, sourceName: 'library-add' })
+    selectedSet.value = new Set()
+    await load()
+  } catch (error) {
+    errorMessage.value = error?.message || '加入词书失败'
+  } finally {
+    isLoading.value = false
+  }
 }
 
 function openEditor(item) {
@@ -371,6 +465,18 @@ onMounted(() => {
   cursor: pointer;
 }
 
+.library-header__action--ghost {
+  background: transparent;
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+.library-header__assign {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .library-header__action:disabled {
   background: #c6b8aa;
   cursor: not-allowed;
@@ -407,7 +513,7 @@ onMounted(() => {
 .library-table__head,
 .library-table__row {
   display: grid;
-  grid-template-columns: 160px 120px 90px minmax(0, 1fr) 140px;
+  grid-template-columns: 36px 160px 120px 90px minmax(0, 1fr) 140px;
   gap: 12px;
   padding: 14px 16px;
   align-items: start;
@@ -444,6 +550,12 @@ onMounted(() => {
   color: var(--color-primary);
   background: rgba(138, 90, 50, 0.12);
   border: 1px solid rgba(138, 90, 50, 0.18);
+}
+
+.library-table__badge--muted {
+  color: var(--color-text-muted);
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.08);
 }
 
 .library-table__cell--wrap {

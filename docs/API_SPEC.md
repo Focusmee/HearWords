@@ -94,7 +94,7 @@
 
 ```json
 {
-  "id": "string",
+  "id": "string|number",
   "lemma": "string",
   "rawWord": "string",
   "phonetic": "string",
@@ -103,6 +103,7 @@
   "exampleSentence": "string",
   "sourceName": "string",
   "bookName": "string",
+  "bookNames": ["string"],
   "lastSource": "string",
   "originalForms": ["string"],
   "masteryLevel": 0,
@@ -199,7 +200,8 @@
 
 请求参数：
 
-- 无
+- Query（可选）：
+  - `bookName`：按词书名筛选（不改变 URL，仅新增可选 query）
 
 成功响应：
 
@@ -473,7 +475,7 @@
 {
   "items": [
     {
-      "id": "uuid",
+      "id": 123,
       "lemma": "run",
       "rawWord": "running",
       "phonetic": "",
@@ -482,6 +484,7 @@
       "exampleSentence": "string",
       "sourceName": "article-1",
       "bookName": "Book A",
+      "bookNames": ["Book A", "Book B"],
       "lastSource": "article-1",
       "originalForms": ["running"],
       "masteryLevel": 0,
@@ -560,7 +563,7 @@
 
 用途：
 
-- 将候选词条写入词书
+- 将候选词条写入总词库（不在导入阶段决定归属词书）
 
 前端使用：
 
@@ -589,7 +592,12 @@
 {
   "message": "string",
   "added": 10,
-  "merged": 4,
+  "merged": 0,
+  "skipped": 2,
+  "duplicates": ["run"],
+  "addedWords": 10,
+  "addedLinks": 10,
+  "skippedLinks": 2,
   "items": [],
   "stats": {
     "totalWords": 0,
@@ -604,6 +612,88 @@
 
 - 当前前端会将 `Candidate` 原样批量提交，服务端并不会严格校验所有字段
 - 现阶段应冻结“可接受并已被前端提交的字段集合”
+- 从数据模型升级后：`bookName` 在导入阶段不再用于建立词书归属关系（会被忽略或仅作为兼容字段）
+
+### 6.12 `GET /api/books`
+
+用途：
+
+- 获取词书列表（词书为独立业务实体）
+
+成功响应：
+
+```json
+{
+  "items": [
+    {
+      "id": 1,
+      "name": "Book A",
+      "createdAt": 1710000000000,
+      "updatedAt": 1710000000000,
+      "wordCount": 10
+    }
+  ]
+}
+```
+
+### 6.13 `POST /api/books`
+
+用途：
+
+- 创建词书
+
+请求参数：
+
+```json
+{ "name": "Book A" }
+```
+
+成功响应：
+
+```json
+{ "item": { "id": 1, "name": "Book A" } }
+```
+
+### 6.14 `POST /api/books/:bookId/words`
+
+用途：
+
+- 将总词库中的词条加入指定词书（N:M 关联）
+
+请求参数：
+
+```json
+{ "wordIds": [123, 456], "sourceName": "library-add" }
+```
+
+成功响应：
+
+```json
+{
+  "bookId": 1,
+  "addedLinks": 2,
+  "skippedLinks": 0,
+  "duplicates": []
+}
+```
+
+### 6.15 `DELETE /api/books/:bookId/words`
+
+用途：
+
+- 从指定词书移除成员关系（不会从总词库删除词条）
+
+请求参数：
+
+```json
+{ "wordIds": [123] }
+```
+
+成功响应：
+
+```json
+{ "bookId": 1, "removedLinks": 1 }
+```
 
 ### 6.10 `PATCH /api/library/:id`
 

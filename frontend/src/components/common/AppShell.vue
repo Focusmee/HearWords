@@ -54,6 +54,11 @@ const navItems = [
     description: '单词集与资源管理预留区'
   },
   {
+    to: '/books',
+    label: '词书',
+    description: '词书管理与成员查看'
+  },
+  {
     to: '/dictation',
     label: '听写',
     description: '练习流程与结果展示预留区'

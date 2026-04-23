@@ -2,7 +2,7 @@ function createLibraryRoutes({ libraryController }) {
   return {
     async handle(request, response, url) {
       if (request.method === "GET" && url.pathname === "/api/library") {
-        await libraryController.handleGetLibrary(request, response);
+        await libraryController.handleGetLibrary(request, response, url);
         return true;
       }
 
@@ -42,4 +42,3 @@ function createLibraryRoutes({ libraryController }) {
 module.exports = {
   createLibraryRoutes,
 };
-
