@@ -18,6 +18,9 @@ function buildQuery(params) {
 }
 
 export const libraryService = {
+  getOptions() {
+    return http.get('/api/library/options')
+  },
   getLibrary({ bookName } = {}) {
     const qs = buildQuery({ bookName })
     return http.get(`/api/library${qs}`)
@@ -28,6 +31,9 @@ export const libraryService = {
   listEntries({ page, pageSize, bookName, sourceName, query } = {}) {
     const qs = buildQuery({ page, pageSize, bookName, sourceName, query })
     return http.get(`/api/library/entries${qs}`)
+  },
+  deleteEntriesBatch({ ids } = {}) {
+    return http.post('/api/library/batch/delete', { ids })
   },
   updateEntry(id, { definition, exampleSentence } = {}) {
     return http.patch(`/api/library/${encodeURIComponent(id)}`, { definition, exampleSentence })

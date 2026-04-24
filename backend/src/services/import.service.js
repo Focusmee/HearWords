@@ -94,7 +94,8 @@ function createImportService({
     async parseText({ text, sourceName, bookName, mode, limit }) {
       const normalizedText = String(text || "").trim();
       const normalizedSourceName = String(sourceName || "manual-input").trim();
-      const normalizedBookName = String(bookName || "未命名词书").trim();
+      const normalizedBookName = String(bookName || "未命名词书").trim() || "未命名词书";
+      
       const normalizedMode = mode === "enhanced" ? "enhanced" : "normal";
       const settings = getSettings();
       const parseLimitMax = clamp(Number(settings?.import?.parseLimitMax) || 2000, 10, 20000);
@@ -107,7 +108,6 @@ function createImportService({
       const result = await parseImportText({
         text: normalizedText,
         sourceName: normalizedSourceName,
-        bookName: normalizedBookName,
         mode: normalizedMode,
         limit: normalizedLimit,
         settings: getSettings(),
@@ -132,9 +132,11 @@ function createImportService({
 
     async importEntries({ entries }) {
       const normalizedEntries = Array.isArray(entries) ? entries : [];
+      const settings = getSettings();
       const imported = await importWordsToLibrary({
         entries: normalizedEntries,
         wordRepository,
+        settings,
       });
       const updatedLibrary = await wordRepository.listLibraryEntries();
 
@@ -158,7 +160,6 @@ function createImportService({
 async function parseImportText({
   text,
   sourceName,
-  bookName,
   mode,
   limit,
   settings,
@@ -168,18 +169,25 @@ async function parseImportText({
   const normalResult = await parseWithDictionary({
     text,
     sourceName,
-    bookName,
     limit,
     textProcessingService,
     wordRepository,
   });
 
   if (mode !== "enhanced") {
+    const translated = await maybeTranslateCandidateDefinitionsToChinese({
+      candidates: normalResult,
+      settings,
+    });
+    const warning = translated.translated
+      ? ""
+      : `中文释义未生成：请在“设置”中配置 One-API，否则导入词库会被阻止。${buildDictionaryWarning()}`;
+
     return {
       mode: "normal",
-      candidates: normalResult,
-      llmUsed: false,
-      warning: buildDictionaryWarning(),
+      candidates: translated.candidates,
+      llmUsed: translated.translated,
+      warning,
     };
   }
 
@@ -196,17 +204,23 @@ async function parseImportText({
     const enhanced = await parseWithOneApi({
       text,
       sourceName,
-      bookName,
       settings,
       textProcessingService,
       wordRepository,
     });
 
+    const translated = await maybeTranslateCandidateDefinitionsToChinese({
+      candidates: enhanced.length ? enhanced : normalResult,
+      settings,
+    });
+
     return {
       mode: "enhanced",
-      candidates: enhanced.length ? enhanced : normalResult,
+      candidates: translated.candidates,
       llmUsed: true,
-      warning: enhanced.length ? "" : `One-API 返回为空，已自动降级。${buildDictionaryWarning()}`,
+      warning: enhanced.length
+        ? ""
+        : `One-API 返回为空，已自动降级。${buildDictionaryWarning()}`,
     };
   } catch (error) {
     return {
@@ -218,7 +232,7 @@ async function parseImportText({
   }
 }
 
-async function parseWithDictionary({ text, sourceName, bookName, limit, textProcessingService, wordRepository }) {
+async function parseWithDictionary({ text, sourceName, limit, textProcessingService, wordRepository }) {
   const fingerprint = hashText(text);
   const normalizedLimit = clamp(Number(limit) || 120, 10, 20000);
   const normalizedText = textProcessingService.normalizeImportedDocumentText(text);
@@ -256,7 +270,7 @@ async function parseWithDictionary({ text, sourceName, bookName, limit, textProc
   return dedupeCandidates(entries);
 }
 
-async function parseWithOneApi({ text, sourceName, bookName, settings, textProcessingService, wordRepository }) {
+async function parseWithOneApi({ text, sourceName, settings, textProcessingService, wordRepository }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), settings.oneApi.timeoutMs);
   const systemPrompt = settings.oneApi.systemPrompt || [
@@ -379,7 +393,6 @@ async function mergeLibraryEntries({ library, entries, wordRepository }) {
       existing.pos = primary?.pos || existing.pos || "";
       existing.exampleSentence = primary?.exampleSentence || entry.exampleSentence || existing.exampleSentence || "";
       existing.lastSource = entry.sourceName || existing.lastSource || "";
-      existing.bookName = entry.bookName || existing.bookName || "未命名词书";
       existing.originalForms = Array.from(new Set([...(existing.originalForms || []), entry.rawWord || lemma]));
       existing.updatedAt = Date.now();
       await wordRepository.saveLibraryEntry(existing);
@@ -396,7 +409,6 @@ async function mergeLibraryEntries({ library, entries, wordRepository }) {
       definition: primary?.definition || entry.definition || `词典未收录 "${lemma}"，待手动补充释义`,
       exampleSentence: primary?.exampleSentence || entry.exampleSentence || "",
       sourceName: entry.sourceName || "manual-input",
-      bookName: entry.bookName || "未命名词书",
       lastSource: entry.sourceName || "manual-input",
       originalForms: [entry.rawWord || lemma],
       masteryLevel: 0,
@@ -414,84 +426,7 @@ async function mergeLibraryEntries({ library, entries, wordRepository }) {
   return { added, merged, skipped, duplicates };
 }
 
-async function importWordsToBooks({ entries, wordRepository, bookRepository }) {
-  if (!bookRepository) {
-    throw createHttpError(500, "缺少 bookRepository");
-  }
-
-  let addedWords = 0;
-  let addedLinks = 0;
-  let skippedLinks = 0;
-  const duplicates = [];
-  const duplicateSet = new Set();
-  const seen = new Set(); // `${bookName}\n${lemma}`
-
-  const dictionaryMap = wordRepository.findDictionaryEntriesByLemmas
-    ? await wordRepository.findDictionaryEntriesByLemmas((entries || []).map((entry) => entry?.lemma))
-    : null;
-
-  for (const entry of entries || []) {
-    if (entry && entry.kept === false) {
-      continue;
-    }
-
-    const lemma = String(entry?.lemma || "").trim().toLowerCase();
-    if (!lemma) {
-      continue;
-    }
-
-    const bookName = String(entry?.bookName || "未命名词书").trim() || "未命名词书";
-    const sourceName = String(entry?.sourceName || "manual-input").trim() || "manual-input";
-    const key = `${bookName}\n${lemma}`;
-    if (seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-
-    const dictionaryMatches = dictionaryMap
-      ? (dictionaryMap.get(lemma) || [])
-      : await wordRepository.findDictionaryEntriesByLemma(lemma);
-    const primary = dictionaryMatches[0] || null;
-
-    const book = await bookRepository.ensureBook({ name: bookName });
-    if (!book?.id) {
-      throw createHttpError(500, `无法创建/获取词书：${bookName}`);
-    }
-
-    const ensured = await wordRepository.ensureWordForImport({
-      lemma,
-      rawWord: entry?.rawWord || lemma,
-      pos: primary?.pos || entry?.pos || "",
-      definition: primary?.definition || entry?.definition || "",
-      exampleSentence: primary?.exampleSentence || entry?.exampleSentence || "",
-      sourceName,
-    });
-
-    if (ensured.created) {
-      addedWords += 1;
-    }
-
-    const link = await wordRepository.ensureBookWordLink({
-      bookId: book.id,
-      wordId: ensured.wordId,
-      sourceName,
-    });
-
-    if (link.created) {
-      addedLinks += 1;
-    } else {
-      skippedLinks += 1;
-      if (!duplicateSet.has(lemma) && duplicates.length < 50) {
-        duplicateSet.add(lemma);
-        duplicates.push(lemma);
-      }
-    }
-  }
-
-  return { addedWords, addedLinks, skippedLinks, duplicates };
-}
-
-async function importWordsToLibrary({ entries, wordRepository }) {
+async function importWordsToLibrary({ entries, wordRepository, settings }) {
   let addedWords = 0;
   let updatedWords = 0;
   let skippedWords = 0;
@@ -502,6 +437,19 @@ async function importWordsToLibrary({ entries, wordRepository }) {
   const dictionaryMap = wordRepository.findDictionaryEntriesByLemmas
     ? await wordRepository.findDictionaryEntriesByLemmas((entries || []).map((entry) => entry?.lemma))
     : null;
+
+  const { translatedMap, missingChinese } = await ensureChineseDefinitionsForImport({
+    entries,
+    dictionaryMap,
+    settings,
+  });
+  if (missingChinese.size) {
+    const sample = [...missingChinese].slice(0, 20);
+    throw createHttpError(
+      400,
+      `导入失败：以下单词缺少中文释义，请先在“设置”中配置 One-API 或手动提供中文释义：${sample.join("，")}${missingChinese.size > 20 ? "…" : ""}`,
+    );
+  }
 
   for (const entry of entries || []) {
     if (entry && entry.kept === false) {
@@ -525,11 +473,14 @@ async function importWordsToLibrary({ entries, wordRepository }) {
       : await wordRepository.findDictionaryEntriesByLemma(lemma);
     const primary = dictionaryMatches[0] || null;
 
+    const enforcedDefinition = translatedMap.get(lemma) || "";
+    const enforcedPos = primary?.pos || entry?.pos || "";
+
     const ensured = await wordRepository.ensureWordForImport({
       lemma,
       rawWord: entry?.rawWord || lemma,
-      pos: primary?.pos || entry?.pos || "",
-      definition: primary?.definition || entry?.definition || "",
+      pos: enforcedPos,
+      definition: enforcedDefinition,
       exampleSentence: primary?.exampleSentence || entry?.exampleSentence || "",
       sourceName,
     });
@@ -552,6 +503,179 @@ async function importWordsToLibrary({ entries, wordRepository }) {
   }
 
   return { addedWords, updatedWords, skippedWords, duplicates };
+}
+
+async function maybeTranslateCandidateDefinitionsToChinese({ candidates, settings }) {
+  const items = Array.isArray(candidates) ? candidates : [];
+  if (!items.length) return { candidates: items, translated: false };
+  if (!canUseOneApi(settings)) return { candidates: items, translated: false };
+
+  const need = items
+    .filter((item) => item && item.definition && !hasChinese(item.definition))
+    .map((item) => ({
+      lemma: String(item.lemma || "").trim().toLowerCase(),
+      pos: String(item.pos || "").trim(),
+      definitionEn: String(item.definition || "").trim(),
+    }))
+    .filter((item) => item.lemma && item.definitionEn)
+    .slice(0, 120);
+
+  if (!need.length) return { candidates: items, translated: false };
+
+  const map = await translateDefinitionsToChineseBatch({
+    items: need,
+    settings,
+  });
+
+  const next = items.map((item) => {
+    const lemma = String(item?.lemma || "").trim().toLowerCase();
+    const zh = map.get(lemma);
+    if (zh && hasChinese(zh)) {
+      return { ...item, definition: zh };
+    }
+    return item;
+  });
+
+  return { candidates: next, translated: true };
+}
+
+async function ensureChineseDefinitionsForImport({ entries, dictionaryMap, settings }) {
+  const translatedMap = new Map();
+  const missingChinese = new Set();
+
+  const list = Array.isArray(entries) ? entries : [];
+  if (!list.length) {
+    return { translatedMap, missingChinese };
+  }
+
+  const needs = [];
+  for (const entry of list) {
+    if (entry && entry.kept === false) continue;
+    const lemma = String(entry?.lemma || "").trim().toLowerCase();
+    if (!lemma) continue;
+
+    const dictionaryMatches = dictionaryMap ? (dictionaryMap.get(lemma) || []) : [];
+    const primary = dictionaryMatches[0] || null;
+    const entryDefinition = String(entry?.definition || "").trim();
+    const primaryDefinition = String(primary?.definition || "").trim();
+
+    if (entryDefinition && hasChinese(entryDefinition)) {
+      translatedMap.set(lemma, entryDefinition);
+      continue;
+    }
+    if (primaryDefinition && hasChinese(primaryDefinition)) {
+      translatedMap.set(lemma, primaryDefinition);
+      continue;
+    }
+
+    const baseEn = entryDefinition || primaryDefinition;
+    if (!baseEn) {
+      missingChinese.add(lemma);
+      continue;
+    }
+
+    needs.push({
+      lemma,
+      pos: String(primary?.pos || entry?.pos || "").trim(),
+      definitionEn: baseEn,
+    });
+  }
+
+  if (!needs.length) {
+    return { translatedMap, missingChinese };
+  }
+
+  if (!canUseOneApi(settings)) {
+    for (const item of needs) missingChinese.add(item.lemma);
+    return { translatedMap, missingChinese };
+  }
+
+  const map = await translateDefinitionsToChineseBatch({
+    items: needs.slice(0, 2000),
+    settings,
+  });
+  for (const item of needs) {
+    const zh = map.get(item.lemma);
+    if (zh && hasChinese(zh)) {
+      translatedMap.set(item.lemma, zh);
+    } else {
+      missingChinese.add(item.lemma);
+    }
+  }
+
+  return { translatedMap, missingChinese };
+}
+
+async function translateDefinitionsToChineseBatch({ items, settings }) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), settings.oneApi.timeoutMs || 15000);
+
+  const apiBase = String(settings.oneApi.baseUrl || "").replace(/\/+$/, "");
+
+  const systemPrompt = [
+    "You translate English dictionary glosses into concise Chinese meanings for learners.",
+    "Return strict JSON with top-level key items: { items: [{ lemma, definitionZh }] }.",
+    "definitionZh must be Chinese only, no English words, no IPA.",
+    "Keep it short (<= 30 Chinese characters) and match common Chinese usage.",
+    "If the English gloss is unclear, still output a reasonable Chinese meaning.",
+  ].join(" ");
+
+  const payload = {
+    model: settings.oneApi.model,
+    temperature: 0.2,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: systemPrompt },
+      {
+        role: "user",
+        content: JSON.stringify({
+          items: items.map((item) => ({
+            lemma: item.lemma,
+            pos: item.pos || "",
+            definitionEn: item.definitionEn,
+          })),
+        }),
+      },
+    ],
+  };
+
+  try {
+    const response = await fetch(`${apiBase}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${settings.oneApi.apiKey}`,
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const textBody = await response.text();
+      throw new Error(`HTTP ${response.status}: ${textBody.slice(0, 160)}`);
+    }
+
+    const result = await response.json();
+    const content = result.choices?.[0]?.message?.content;
+    const parsed = parseJsonContent(content);
+    const out = Array.isArray(parsed?.items) ? parsed.items : [];
+
+    const map = new Map();
+    for (const item of out) {
+      const lemma = String(item?.lemma || "").trim().toLowerCase();
+      const zh = String(item?.definitionZh || "").trim();
+      if (lemma && zh) {
+        map.set(lemma, zh);
+      }
+    }
+    return map;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function hasChinese(text) {
+  return /[\u4E00-\u9FFF]/.test(String(text || ""));
 }
 
 function buildStats(library) {

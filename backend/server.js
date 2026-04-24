@@ -26,6 +26,7 @@ const textProcessingService = require("./src/services/text-processing.service");
 const wordRepository = require("./src/repositories/word.repository");
 const bookRepository = require("./src/repositories/book.repository");
 const dictationSessionRepository = require("./src/repositories/dictation-session.repository");
+const dictationSelectionRepository = require("./src/repositories/dictation-selection.repository");
 const { createBooksController } = require("./src/controllers/books.controller");
 const { createBooksRoutes } = require("./src/routes/books.routes");
 
@@ -67,11 +68,11 @@ async function bootstrap() {
     paddleOcrService,
     textProcessingService,
     wordRepository,
-    bookRepository,
     getSettings: readSettings,
   });
   const dictationService = createDictationService({
     dictationSessionRepository,
+    dictationSelectionRepository,
     wordRepository,
   });
   const libraryService = createLibraryService({

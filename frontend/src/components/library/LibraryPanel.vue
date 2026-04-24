@@ -9,8 +9,7 @@
         <label class="library-header__field">
           <span>加入词书</span>
           <div class="library-header__assign">
-            <select v-model="assign.bookId" class="library-header__select" :disabled="isLoading">
-              <option value="">请选择</option>
+            <select v-model="assign.bookIds" class="library-header__select" :disabled="isLoading" multiple>
               <option v-for="book in allBooks" :key="book.id" :value="String(book.id)">
                 {{ book.name }}（{{ book.wordCount }}）
               </option>
@@ -18,7 +17,7 @@
             <button
               type="button"
               class="library-header__action"
-              :disabled="isLoading || !assign.bookId || selectedIds.length === 0"
+              :disabled="isLoading || assign.bookIds.length === 0 || selectedIds.length === 0"
               @click="addSelectedToBook"
             >
               加入（{{ selectedIds.length }}）
@@ -27,6 +26,18 @@
               新建词书
             </button>
           </div>
+        </label>
+
+        <label class="library-header__field">
+          <span>批量删除</span>
+          <button
+            type="button"
+            class="library-header__action library-header__action--danger"
+            :disabled="isLoading || selectedIds.length === 0"
+            @click="deleteSelectedFromLibrary"
+          >
+            删除（{{ selectedIds.length }}）
+          </button>
         </label>
 
         <label class="library-header__field">
@@ -213,7 +224,7 @@ const filters = reactive({
 })
 
 const assign = reactive({
-  bookId: ''
+  bookIds: []
 })
 
 const pagination = reactive({
@@ -253,9 +264,16 @@ const pageCount = computed(() => {
 })
 
 async function refreshBooks() {
-  const [legacy, modern] = await Promise.all([libraryService.listBooks(), booksService.listBooks()])
-  books.value = Array.isArray(legacy?.items) ? legacy.items : []
-  allBooks.value = Array.isArray(modern?.items) ? modern.items : []
+  try {
+    const payload = await libraryService.getOptions()
+    books.value = Array.isArray(payload?.sources) ? payload.sources : []
+    allBooks.value = Array.isArray(payload?.books) ? payload.books : []
+    return
+  } catch {
+    const [legacy, modern] = await Promise.all([libraryService.listBooks(), booksService.listBooks()])
+    books.value = Array.isArray(legacy?.items) ? legacy.items : []
+    allBooks.value = Array.isArray(modern?.items) ? modern.items : []
+  }
 }
 
 async function refreshEntries() {
@@ -342,18 +360,53 @@ async function promptCreateBook() {
 }
 
 async function addSelectedToBook() {
-  if (!assign.bookId) return
+  if (!Array.isArray(assign.bookIds) || assign.bookIds.length === 0) return
   const wordIds = selectedIds.value.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
   if (!wordIds.length) return
 
   isLoading.value = true
   errorMessage.value = ''
   try {
-    await booksService.addWordsToBook(assign.bookId, { wordIds, sourceName: 'library-add' })
+    const bookIds = assign.bookIds.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
+    if (bookIds.length === 1) {
+      await booksService.addWordsToBook(bookIds[0], { wordIds, sourceName: 'library-add' })
+    } else {
+      try {
+        await booksService.addWordsToBooks({ bookIds, wordIds, sourceName: 'library-add' })
+      } catch (error) {
+        const msg = String(error?.message || '')
+        if (!msg.includes('接口不存在')) {
+          throw error
+        }
+        for (const bookId of bookIds) {
+          await booksService.addWordsToBook(bookId, { wordIds, sourceName: 'library-add' })
+        }
+      }
+    }
     selectedSet.value = new Set()
     await load()
   } catch (error) {
     errorMessage.value = error?.message || '加入词书失败'
+  } finally {
+    isLoading.value = false
+  }
+}
+
+async function deleteSelectedFromLibrary() {
+  const wordIds = selectedIds.value.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
+  if (!wordIds.length) return
+
+  const ok = window.confirm(`确认从总词库批量删除 ${wordIds.length} 个单词？（会同时从所有词书移除）`)
+  if (!ok) return
+
+  isLoading.value = true
+  errorMessage.value = ''
+  try {
+    await libraryService.deleteEntriesBatch({ ids: wordIds })
+    selectedSet.value = new Set()
+    await load()
+  } catch (error) {
+    errorMessage.value = error?.message || '批量删除失败'
   } finally {
     isLoading.value = false
   }
@@ -469,6 +522,12 @@ onMounted(() => {
   background: transparent;
   border-color: var(--color-border);
   color: var(--color-text);
+}
+
+.library-header__action--danger {
+  background: transparent;
+  border-color: rgba(138, 47, 47, 0.34);
+  color: #8a2f2f;
 }
 
 .library-header__assign {
