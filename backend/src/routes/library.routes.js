@@ -6,6 +6,11 @@ function createLibraryRoutes({ libraryController }) {
         return true;
       }
 
+      if (request.method === "GET" && url.pathname === "/api/library/options") {
+        await libraryController.handleGetOptions(request, response);
+        return true;
+      }
+
       if (request.method === "GET" && url.pathname === "/api/library/books") {
         await libraryController.handleListBooks(request, response);
         return true;
@@ -13,6 +18,11 @@ function createLibraryRoutes({ libraryController }) {
 
       if (request.method === "GET" && url.pathname === "/api/library/entries") {
         await libraryController.handleListEntries(request, response, url);
+        return true;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/library/batch/delete") {
+        await libraryController.handleBatchDeleteEntries(request, response);
         return true;
       }
 

@@ -1,5 +1,14 @@
 function createLibraryController({ libraryService, readJsonBody, sendJson }) {
   return {
+    async handleGetOptions(request, response) {
+      try {
+        const payload = await libraryService.getOptions();
+        return sendJson(response, 200, payload);
+      } catch (error) {
+        return sendJson(response, error.statusCode || 500, { error: error.message || "服务器异常" });
+      }
+    },
+
     async handleGetLibrary(request, response, url) {
       try {
         const payload = await libraryService.getLibrarySnapshot({
@@ -52,6 +61,18 @@ function createLibraryController({ libraryService, readJsonBody, sendJson }) {
     async handleDeleteEntry(request, response, id) {
       try {
         const payload = await libraryService.deleteEntry(id);
+        return sendJson(response, 200, payload);
+      } catch (error) {
+        return sendJson(response, error.statusCode || 500, { error: error.message || "服务器异常" });
+      }
+    },
+
+    async handleBatchDeleteEntries(request, response) {
+      try {
+        const body = await readJsonBody(request);
+        const payload = await libraryService.deleteEntriesBatch({
+          ids: body?.ids,
+        });
         return sendJson(response, 200, payload);
       } catch (error) {
         return sendJson(response, error.statusCode || 500, { error: error.message || "服务器异常" });

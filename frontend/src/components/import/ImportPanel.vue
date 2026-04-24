@@ -131,7 +131,9 @@ import FileUploadBox from '@/components/import/FileUploadBox.vue'
 import ParsePreview from '@/components/import/ParsePreview.vue'
 import CandidateList from '@/components/import/CandidateList.vue'
 import { importService } from '@/services/import.service.js'
-import { http } from '@/services/http.js'
+import { appService } from '@/services/app.service.js'
+import { settingsService } from '@/services/settings.service.js'
+import { libraryService } from '@/services/library.service.js'
 
 const defaultPreviewText = `Welcome to HearWords.
 Paste text here, or upload a file, then click “解析候选词”.`
@@ -401,9 +403,9 @@ async function readFileAsBase64(file) {
 onMounted(async () => {
   try {
     const [health, settings, library] = await Promise.all([
-      http.get('/api/health'),
-      http.get('/api/settings'),
-      http.get('/api/library')
+      appService.getHealth(),
+      settingsService.getSettings(),
+      libraryService.getLibrary()
     ])
     const nextMax = Number(settings?.import?.parseLimitMax)
     if (Number.isFinite(nextMax) && nextMax > 0) {

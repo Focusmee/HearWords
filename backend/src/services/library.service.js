@@ -3,6 +3,13 @@ const DEFAULT_SOURCE_NAME = "manual-input";
 
 function createLibraryService({ wordRepository, bookRepository }) {
   return {
+    async getOptions() {
+      return {
+        sources: await bookRepository.listLibraryBooks(),
+        books: await bookRepository.listBooks(),
+      };
+    },
+
     async getLibrarySnapshot(params = {}) {
       const bookName = typeof params.bookName === "string" ? params.bookName.trim() : "";
       const items = await wordRepository.listLibraryEntries({ bookName });
@@ -72,6 +79,12 @@ function createLibraryService({ wordRepository, bookRepository }) {
       const nextExampleSentence = typeof exampleSentence === "string" ? exampleSentence.trim() : target.exampleSentence;
       const updatedAt = Date.now();
 
+      if (!hasChinese(nextDefinition)) {
+        const error = new Error("释义必须包含中文说明（可在中文语境下理解该词的意思）。");
+        error.statusCode = 400;
+        throw error;
+      }
+
       await wordRepository.updateLibraryEntryTextFields({
         id,
         definition: nextDefinition,
@@ -106,7 +119,31 @@ function createLibraryService({ wordRepository, bookRepository }) {
         sources: await bookRepository.listLibraryBooks(),
       };
     },
+
+    async deleteEntriesBatch({ ids }) {
+      const normalized = Array.isArray(ids) ? ids : [];
+      if (!normalized.length) {
+        const error = new Error("缺少 ids");
+        error.statusCode = 400;
+        throw error;
+      }
+
+      const result = await wordRepository.deleteLibraryEntries(normalized);
+      const library = await wordRepository.listLibraryEntries();
+      return {
+        message: `已批量删除：${Number(result?.removed) || 0} 个单词`,
+        removed: Number(result?.removed) || 0,
+        removedLinks: Number(result?.removedLinks) || 0,
+        items: library,
+        stats: buildStats(library),
+        sources: await bookRepository.listLibraryBooks(),
+      };
+    },
   };
+}
+
+function hasChinese(text) {
+  return /[\u4E00-\u9FFF]/.test(String(text || ""));
 }
 
 function buildStats(library) {

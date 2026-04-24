@@ -15,6 +15,22 @@
         <button type="button" class="books-header__action books-header__action--ghost" :disabled="isLoading" @click="promptCreateBook">
           新建词书
         </button>
+        <button
+          type="button"
+          class="books-header__action books-header__action--danger"
+          :disabled="isLoading || !selectedBookId"
+          @click="deleteSelectedBook"
+        >
+          删除词书
+        </button>
+        <button
+          type="button"
+          class="books-header__action books-header__action--danger"
+          :disabled="isLoading || !selectedBookId || selectedWordIds.length === 0"
+          @click="removeSelectedWords"
+        >
+          批量移除（{{ selectedWordIds.length }}）
+        </button>
         <button type="button" class="books-header__action" :disabled="isLoading || !selectedBookId" @click="loadBookWords">
           {{ isLoading ? '加载中…' : '刷新' }}
         </button>
@@ -30,6 +46,7 @@
 
       <div v-else class="books-table">
         <div class="books-table__head">
+          <span></span>
           <span>Lemma</span>
           <span>Definition</span>
           <span>Actions</span>
@@ -38,6 +55,14 @@
         <div v-if="words.length === 0" class="books-table__empty">该词书暂无成员</div>
 
         <div v-for="word in words" :key="word.id" class="books-table__row">
+          <div class="books-table__cell">
+            <input
+              type="checkbox"
+              :checked="selectedSet.has(String(word.id))"
+              :disabled="isLoading"
+              @change="toggleSelect(word)"
+            />
+          </div>
           <div class="books-table__cell books-table__cell--strong">{{ word.lemma }}</div>
           <div class="books-table__cell books-table__cell--wrap">
             <p class="books-table__definition">{{ word.definition || '-' }}</p>
@@ -55,7 +80,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import SectionCard from '@/components/common/SectionCard.vue'
 import { booksService } from '@/services/books.service.js'
 import { libraryService } from '@/services/library.service.js'
@@ -65,6 +90,13 @@ const errorMessage = ref('')
 const books = ref([])
 const selectedBookId = ref('')
 const words = ref([])
+const selectedSet = ref(new Set())
+
+const selectedWordIds = computed(() => {
+  return Array.from(selectedSet.value.values())
+    .map((id) => Number(id))
+    .filter((id) => Number.isFinite(id) && id > 0)
+})
 
 async function refreshBooks() {
   const payload = await booksService.listBooks()
@@ -82,10 +114,69 @@ async function loadBookWords() {
   const name = getSelectedBookName()
   if (!name) {
     words.value = []
+    selectedSet.value = new Set()
     return
   }
   const payload = await libraryService.getLibrary({ bookName: name })
   words.value = Array.isArray(payload?.items) ? payload.items : []
+  selectedSet.value = new Set()
+}
+
+function toggleSelect(word) {
+  const id = String(word?.id || '')
+  if (!id) return
+  const next = new Set(selectedSet.value)
+  if (next.has(id)) {
+    next.delete(id)
+  } else {
+    next.add(id)
+  }
+  selectedSet.value = next
+}
+
+async function removeSelectedWords() {
+  if (!selectedBookId.value) return
+  const wordIds = selectedWordIds.value
+  if (!wordIds.length) return
+
+  const ok = window.confirm(`确认从该词书批量移除 ${wordIds.length} 个单词？（不会从总词库删除）`)
+  if (!ok) return
+
+  isLoading.value = true
+  errorMessage.value = ''
+  try {
+    await booksService.removeWordsFromBook(selectedBookId.value, { wordIds })
+    selectedSet.value = new Set()
+    await refreshBooks()
+    await loadBookWords()
+  } catch (error) {
+    errorMessage.value = error?.message || '批量移除失败'
+  } finally {
+    isLoading.value = false
+  }
+}
+
+async function deleteSelectedBook() {
+  const bookId = selectedBookId.value
+  if (!bookId) return
+
+  const name = getSelectedBookName()
+  const ok = window.confirm(`确认删除词书：${name || bookId}？（仅删除词书与关联，不会删除总词库单词）`)
+  if (!ok) return
+
+  isLoading.value = true
+  errorMessage.value = ''
+  try {
+    await booksService.deleteBook(bookId)
+    selectedBookId.value = ''
+    words.value = []
+    selectedSet.value = new Set()
+    await refreshBooks()
+  } catch (error) {
+    errorMessage.value = error?.message || '删除词书失败'
+  } finally {
+    isLoading.value = false
+  }
 }
 
 async function promptCreateBook() {
@@ -176,6 +267,12 @@ onMounted(async () => {
   color: var(--color-text);
 }
 
+.books-header__action--danger {
+  background: transparent;
+  border-color: rgba(138, 47, 47, 0.34);
+  color: #8a2f2f;
+}
+
 .books-header__action:disabled {
   background: #c6b8aa;
   cursor: not-allowed;
@@ -210,7 +307,7 @@ onMounted(async () => {
 .books-table__head,
 .books-table__row {
   display: grid;
-  grid-template-columns: 160px minmax(0, 1fr) 110px;
+  grid-template-columns: 36px 160px minmax(0, 1fr) 110px;
   gap: 12px;
   padding: 14px 16px;
   align-items: start;
@@ -278,4 +375,3 @@ onMounted(async () => {
   color: #8a2f2f;
 }
 </style>
-

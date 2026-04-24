@@ -161,6 +161,24 @@ async function initializeDatabase() {
       value TEXT NOT NULL
     );
   `);
+
+  await ensureWordsColumn("dictation_attempts", "INTEGER DEFAULT 0");
+}
+
+async function ensureWordsColumn(columnName, columnSpec) {
+  const normalizedName = String(columnName || "").trim();
+  const normalizedSpec = String(columnSpec || "").trim();
+  if (!normalizedName || !normalizedSpec) {
+    return;
+  }
+
+  const columns = await all(`PRAGMA table_info(words)`);
+  const exists = columns.some((column) => String(column?.name || "").toLowerCase() === normalizedName.toLowerCase());
+  if (exists) {
+    return;
+  }
+
+  await exec(`ALTER TABLE words ADD COLUMN ${normalizedName} ${normalizedSpec};`);
 }
 
 async function getLibrary() {

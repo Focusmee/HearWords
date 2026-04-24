@@ -11,6 +11,22 @@ function createBooksRoutes({ booksController }) {
         return true;
       }
 
+      if (request.method === "POST" && url.pathname === "/api/books/batch/words") {
+        await booksController.handleBatchAddWords(request, response);
+        return true;
+      }
+
+      if (request.method === "DELETE" && url.pathname.startsWith("/api/books/") && !url.pathname.endsWith("/words")) {
+        const prefix = "/api/books/";
+        const raw = url.pathname.slice(prefix.length);
+        const bookId = decodeURIComponent(raw).replaceAll("/", "");
+        if (!bookId) {
+          return false;
+        }
+        await booksController.handleDeleteBook(request, response, bookId);
+        return true;
+      }
+
       if (url.pathname.startsWith("/api/books/") && url.pathname.endsWith("/words")) {
         const prefix = "/api/books/";
         const raw = url.pathname.slice(prefix.length, url.pathname.length - "/words".length);

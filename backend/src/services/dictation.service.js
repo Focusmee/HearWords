@@ -7,31 +7,46 @@ const REVIEW_STEPS = [
   7 * 24 * 60 * 60 * 1000,
 ];
 
-function createDictationService({ dictationSessionRepository, wordRepository }) {
+function createDictationService({ dictationSessionRepository, dictationSelectionRepository, wordRepository }) {
   return {
-    async startSession({ scope } = {}) {
-      const normalizedScope = scope === "all" ? "all" : "due";
+    async startSession({ scope, includedBookNames, bookNames, wordIds } = {}) {
+      const normalizedScope = "all";
+      const selectionInput = normalizeSelectionInput({ includedBookNames, bookNames, wordIds });
+      const hasSelection = selectionInput.includedBookNames.length || selectionInput.wordIds.length;
+
+      if (hasSelection) {
+        await dictationSelectionRepository.setSelection(selectionInput);
+      }
+
       const library = await wordRepository.listLibraryEntries();
-      const now = Date.now();
-      const queue = library
-        .filter((item) => normalizedScope === "all" || item.nextReviewTime <= now)
-        .map((item) => item.id);
+      const queue = hasSelection
+        ? buildSelectedQueue(library, selectionInput)
+        : library.map((item) => item.id);
 
       const session = queue.length
         ? { queue, index: 0, scope: normalizedScope, updatedAt: Date.now() }
         : emptySession();
 
       await saveSession(dictationSessionRepository, session);
+      const selection = await dictationSelectionRepository.getSelection();
+
+      const hasValidSelection = selection.includedBookNames.length || selection.wordIds.length;
 
       return {
         message: queue.length
           ? "已开始新的听写轮次。"
-          : normalizedScope === "all"
-            ? "单词书还是空的。"
-            : "当前没有待复习单词。",
+          : hasSelection
+            ? "选中的单词为空。"
+            : "单词书还是空的。",
         finished: !queue.length,
         session,
         current: queue.length ? getCurrentSessionWord(library, session) : null,
+        selection: hasValidSelection
+          ? {
+              ...selection,
+              bookNames: selection.includedBookNames,
+            }
+          : { includedBookNames: [], bookNames: [], wordIds: [], updatedAt: 0 },
       };
     },
 
@@ -39,22 +54,32 @@ function createDictationService({ dictationSessionRepository, wordRepository }) 
       const session = await readSession(dictationSessionRepository);
       const library = await wordRepository.listLibraryEntries();
       const current = getCurrentSessionWord(library, session);
+      const selection = await dictationSelectionRepository.getSelection();
       return {
         finished: !current,
         session,
         current,
         message: current ? "已恢复听写进度。" : "当前没有进行中的听写轮次。",
+        selection: {
+          ...selection,
+          bookNames: selection.includedBookNames,
+        },
       };
     },
 
     async resetSession() {
       const session = emptySession();
       await saveSession(dictationSessionRepository, session);
+      const selection = await dictationSelectionRepository.getSelection();
       return {
         message: "听写进度已重置。",
         finished: true,
         session,
         current: null,
+        selection: {
+          ...selection,
+          bookNames: selection.includedBookNames,
+        },
       };
     },
 
@@ -71,6 +96,7 @@ function createDictationService({ dictationSessionRepository, wordRepository }) 
         throw createHttpError(400, "请输入答案。");
       }
 
+      current.dictationAttempts = Number(current.dictationAttempts || 0) + 1;
       const correct = normalizedAnswer === String(current.lemma || "").toLowerCase();
       if (correct) {
         const nextLevel = Math.min(5, Number(current.masteryLevel || 0) + 1);
@@ -124,6 +150,7 @@ function createDictationService({ dictationSessionRepository, wordRepository }) 
         throw createHttpError(400, "当前没有进行中的听写。");
       }
 
+      current.dictationAttempts = Number(current.dictationAttempts || 0) + 1;
       current.failCount = Number(current.failCount || 0) + 1;
       current.nextReviewTime = Date.now() + REVIEW_STEPS[0];
       current.updatedAt = Date.now();
@@ -147,6 +174,51 @@ function createDictationService({ dictationSessionRepository, wordRepository }) 
   };
 }
 
+function normalizeSelectionInput({ includedBookNames, bookNames, wordIds } = {}) {
+  return {
+    includedBookNames: Array.from(
+      new Set(
+        (Array.isArray(bookNames) ? bookNames : []).concat(Array.isArray(includedBookNames) ? includedBookNames : [])
+          .map((value) => String(value || "").trim())
+          .filter(Boolean),
+      ),
+    ),
+    wordIds: Array.from(new Set((Array.isArray(wordIds) ? wordIds : []).map((id) => Number(id)).filter((id) => id > 0))),
+  };
+}
+
+function buildSelectedQueue(library, selection) {
+  const libraryById = new Map(library.map((entry) => [entry.id, entry]));
+  const output = [];
+  const seen = new Set();
+
+  const normalizedIncludedBookNames = Array.isArray(selection.includedBookNames) ? selection.includedBookNames : [];
+  for (const bookName of normalizedIncludedBookNames) {
+    for (const entry of library) {
+      const entryBookNames = Array.isArray(entry.bookNames) ? entry.bookNames : [];
+      const match = entryBookNames.includes(bookName) || entry.bookName === bookName;
+      if (!match) continue;
+      if (!seen.has(entry.id)) {
+        seen.add(entry.id);
+        output.push(entry.id);
+      }
+    }
+  }
+
+  const normalizedWordIds = Array.isArray(selection.wordIds) ? selection.wordIds : [];
+  for (const id of normalizedWordIds) {
+    const wordId = Number(id);
+    if (!wordId) continue;
+    if (!seen.has(wordId)) {
+      seen.add(wordId);
+      output.push(wordId);
+    }
+  }
+
+  const existing = output.filter((id) => libraryById.has(id));
+  return existing;
+}
+
 async function saveSession(dictationSessionRepository, session) {
   await dictationSessionRepository.setRawSession(JSON.stringify(session));
 }
@@ -167,7 +239,7 @@ function emptySession() {
   return {
     queue: [],
     index: 0,
-    scope: "due",
+    scope: "all",
     updatedAt: 0,
   };
 }
@@ -183,7 +255,7 @@ function normalizeSession(session) {
   return {
     queue: session.queue,
     index,
-    scope: session.scope === "all" ? "all" : "due",
+    scope: "all",
     updatedAt: Number(session.updatedAt) || Date.now(),
   };
 }
@@ -237,4 +309,3 @@ function createHttpError(statusCode, message) {
 module.exports = {
   createDictationService,
 };
-

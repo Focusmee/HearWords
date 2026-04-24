@@ -25,6 +25,10 @@ function isPlaceholderDefinition(value) {
   return Boolean(text && (text.includes("词典未收录") || text.includes("待手动补充")));
 }
 
+function hasChineseText(value) {
+  return /[\u4E00-\u9FFF]/.test(normalizeText(value));
+}
+
 function pickBetterText(current, candidate, { avoidPlaceholder = false } = {}) {
   const a = normalizeText(current);
   const b = normalizeText(candidate);
@@ -37,6 +41,10 @@ function pickBetterText(current, candidate, { avoidPlaceholder = false } = {}) {
     const bBad = isPlaceholderDefinition(b);
     if (aBad && !bBad) return b;
     if (!aBad && bBad) return a;
+  }
+
+  if (hasChineseText(b) && !hasChineseText(a)) {
+    return b;
   }
 
   if (b.length > a.length) return b;
@@ -126,6 +134,7 @@ async function listLibraryEntries(params = {}) {
           w.original_forms AS originalFormsJson,
           w.mastery_level AS masteryLevel,
           w.fail_count AS failCount,
+          w.dictation_attempts AS dictationAttempts,
           w.created_at AS createdAt,
           w.updated_at AS updatedAt,
           w.next_review_time AS nextReviewTime,
@@ -171,6 +180,7 @@ async function listLibraryEntries(params = {}) {
         original_forms AS originalFormsJson,
         mastery_level AS masteryLevel,
         fail_count AS failCount,
+        dictation_attempts AS dictationAttempts,
         created_at AS createdAt,
         updated_at AS updatedAt,
         next_review_time AS nextReviewTime
@@ -217,6 +227,7 @@ async function findLibraryEntryById(id) {
         original_forms AS originalFormsJson,
         mastery_level AS masteryLevel,
         fail_count AS failCount,
+        dictation_attempts AS dictationAttempts,
         created_at AS createdAt,
         updated_at AS updatedAt,
         next_review_time AS nextReviewTime
@@ -248,6 +259,42 @@ async function deleteLibraryEntry(id) {
   const wordId = Number(id);
   if (!wordId) return;
   await run(`DELETE FROM words WHERE id = ?`, [wordId]);
+}
+
+async function deleteLibraryEntries(ids) {
+  const normalized = Array.from(new Set((Array.isArray(ids) ? ids : []).map((id) => Number(id)).filter((id) => id > 0)));
+  if (!normalized.length) {
+    return { removed: 0 };
+  }
+
+  let removedLinks = 0;
+  let removedWords = 0;
+
+  const chunkSize = 900;
+  for (let index = 0; index < normalized.length; index += chunkSize) {
+    const chunk = normalized.slice(index, index + chunkSize);
+    const placeholders = chunk.map(() => "?").join(", ");
+
+    const linkResult = await run(
+      `
+        DELETE FROM book_words
+        WHERE word_id IN (${placeholders})
+      `,
+      chunk,
+    );
+    removedLinks += Number(linkResult?.changes) || 0;
+
+    const wordResult = await run(
+      `
+        DELETE FROM words
+        WHERE id IN (${placeholders})
+      `,
+      chunk,
+    );
+    removedWords += Number(wordResult?.changes) || 0;
+  }
+
+  return { removed: removedWords, removedLinks };
 }
 
 async function updateLibraryEntryTextFields({ id, definition, exampleSentence, updatedAt }) {
@@ -339,6 +386,10 @@ async function saveLibraryEntry(entry) {
   const wordId = Number(entry?.id);
   const lemma = normalizeLemma(entry?.lemma);
   const now = Date.now();
+  const dictationAttempts =
+    entry && Object.prototype.hasOwnProperty.call(entry, "dictationAttempts")
+      ? Number(entry.dictationAttempts) || 0
+      : null;
 
   if (wordId) {
     await run(
@@ -354,6 +405,7 @@ async function saveLibraryEntry(entry) {
           original_forms = ?,
           mastery_level = ?,
           fail_count = ?,
+          dictation_attempts = COALESCE(?, dictation_attempts),
           updated_at = ?,
           next_review_time = ?,
           last_source = ?
@@ -369,6 +421,7 @@ async function saveLibraryEntry(entry) {
         JSON.stringify(Array.isArray(entry.originalForms) ? entry.originalForms : [entry.rawWord || lemma]),
         Number(entry.masteryLevel) || 0,
         Number(entry.failCount) || 0,
+        dictationAttempts,
         Number(entry.updatedAt) || now,
         Number(entry.nextReviewTime) || now,
         normalizeText(entry.lastSource) || normalizeText(entry.sourceName),
@@ -395,12 +448,13 @@ async function saveLibraryEntry(entry) {
         original_forms,
         mastery_level,
         fail_count,
+        dictation_attempts,
         created_at,
         updated_at,
         next_review_time,
         last_source
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
       lemma,
@@ -412,6 +466,7 @@ async function saveLibraryEntry(entry) {
       JSON.stringify(Array.isArray(entry.originalForms) ? entry.originalForms : [entry.rawWord || lemma]),
       Number(entry.masteryLevel) || 0,
       Number(entry.failCount) || 0,
+      dictationAttempts || 0,
       Number(entry.createdAt) || now,
       Number(entry.updatedAt) || now,
       Number(entry.nextReviewTime) || now,
@@ -460,6 +515,7 @@ async function ensureWordForImport({ lemma, rawWord, pos, definition, exampleSen
     const nextPos = pickBetterText(existing.pos, pos);
     const nextDefinition = pickBetterText(existing.definition, definition, { avoidPlaceholder: true });
     const nextExampleSentence = pickBetterText(existing.exampleSentence, exampleSentence);
+    const shouldReplaceDefinition = hasChineseText(nextDefinition) && !hasChineseText(existing.definition);
     const shouldUpdateText =
       normalizeText(existing.pos) !== nextPos ||
       normalizeText(existing.definition) !== nextDefinition ||
@@ -479,7 +535,7 @@ async function ensureWordForImport({ lemma, rawWord, pos, definition, exampleSen
             ELSE pos
           END,
           definition = CASE
-            WHEN definition IS NULL OR TRIM(definition) = '' OR definition LIKE '%词典未收录%' OR definition LIKE '%待手动补充%' THEN ?
+            WHEN definition IS NULL OR TRIM(definition) = '' OR definition LIKE '%词典未收录%' OR definition LIKE '%待手动补充%' OR ? = 1 THEN ?
             ELSE definition
           END,
           example_sentence = CASE
@@ -497,6 +553,7 @@ async function ensureWordForImport({ lemma, rawWord, pos, definition, exampleSen
       [
         normalizeText(rawWord) || normalizedLemma,
         nextPos,
+        shouldReplaceDefinition ? 1 : 0,
         nextDefinition,
         nextExampleSentence,
         JSON.stringify(Array.from(nextForms)),
@@ -548,31 +605,6 @@ async function ensureWordForImport({ lemma, rawWord, pos, definition, exampleSen
   return { wordId: Number(row.id), created: true, updated: false };
 }
 
-async function ensureBookWordLink({ bookId, wordId, sourceName }) {
-  const now = Date.now();
-  const insertResult = await run(
-    `
-      INSERT OR IGNORE INTO book_words (book_id, word_id, created_at, updated_at, last_source)
-      VALUES (?, ?, ?, ?, ?)
-    `,
-    [bookId, wordId, now, now, normalizeText(sourceName) || DEFAULT_SOURCE_NAME],
-  );
-  const created = Boolean(insertResult?.changes);
-
-  await run(
-    `
-      UPDATE book_words
-      SET
-        updated_at = ?,
-        last_source = ?
-      WHERE book_id = ? AND word_id = ?
-    `,
-    [now, normalizeText(sourceName) || DEFAULT_SOURCE_NAME, bookId, wordId],
-  );
-
-  return { created };
-}
-
 async function insertParseHistory(entry) {
   await run(
     `
@@ -599,11 +631,11 @@ module.exports = {
   listLibraryEntries,
   findLibraryEntryById,
   deleteLibraryEntry,
+  deleteLibraryEntries,
   updateLibraryEntryTextFields,
   findDictionaryEntriesByLemma,
   findDictionaryEntriesByLemmas,
   saveLibraryEntry,
   ensureWordForImport,
-  ensureBookWordLink,
   insertParseHistory,
 };

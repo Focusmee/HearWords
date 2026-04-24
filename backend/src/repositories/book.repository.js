@@ -160,6 +160,48 @@ async function addWordsToBook({ bookId, wordIds, sourceName }) {
   return { addedLinks, skippedLinks, duplicates };
 }
 
+async function ensureBookWordLink({ bookId, wordId, sourceName }) {
+  const normalizedBookId = Number(bookId);
+  const normalizedWordId = Number(wordId);
+  if (!normalizedBookId || !normalizedWordId) {
+    return { created: false };
+  }
+
+  const now = Date.now();
+  const src = normalizeText(sourceName) || DEFAULT_SOURCE_NAME;
+
+  const insertResult = await run(
+    `
+      INSERT OR IGNORE INTO book_words (book_id, word_id, created_at, updated_at, last_source)
+      VALUES (?, ?, ?, ?, ?)
+    `,
+    [normalizedBookId, normalizedWordId, now, now, src],
+  );
+  const created = Boolean(insertResult?.changes);
+
+  await run(
+    `
+      UPDATE book_words
+      SET
+        updated_at = ?,
+        last_source = ?
+      WHERE book_id = ? AND word_id = ?
+    `,
+    [now, src, normalizedBookId, normalizedWordId],
+  );
+
+  await run(
+    `
+      UPDATE books
+      SET updated_at = ?
+      WHERE id = ?
+    `,
+    [now, normalizedBookId],
+  );
+
+  return { created };
+}
+
 async function removeWordsFromBook({ bookId, wordIds }) {
   const normalizedBookId = Number(bookId);
   const normalizedWordIds = Array.from(
@@ -190,11 +232,41 @@ async function removeWordsFromBook({ bookId, wordIds }) {
   return { removedLinks: Number(result?.changes) || 0 };
 }
 
+async function deleteBook(bookId) {
+  const normalizedBookId = Number(bookId);
+  if (!normalizedBookId) {
+    return { removedBook: 0, removedLinks: 0 };
+  }
+
+  const links = await run(
+    `
+      DELETE FROM book_words
+      WHERE book_id = ?
+    `,
+    [normalizedBookId],
+  );
+
+  const book = await run(
+    `
+      DELETE FROM books
+      WHERE id = ?
+    `,
+    [normalizedBookId],
+  );
+
+  return {
+    removedBook: Number(book?.changes) || 0,
+    removedLinks: Number(links?.changes) || 0,
+  };
+}
+
 module.exports = {
   ensureBook,
   findBookByName,
   listLibraryBooks,
   listBooks,
   addWordsToBook,
+  ensureBookWordLink,
   removeWordsFromBook,
+  deleteBook,
 };
