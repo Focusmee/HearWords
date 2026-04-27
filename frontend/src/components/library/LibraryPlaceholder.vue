@@ -1,7 +1,7 @@
 <template>
   <SectionCard
     title="词库模块占位"
-    eyebrow="Library"
+    eyebrow="词库"
     description="后续将在这里承接词书列表、单词表格、编辑表单与筛选交互。"
   >
     <div class="placeholder-grid">

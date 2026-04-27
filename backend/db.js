@@ -160,6 +160,70 @@ async function initializeDatabase() {
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS answer_records (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      session_id TEXT,
+      word_id INTEGER NOT NULL,
+      book_id INTEGER,
+      book_name TEXT,
+      expected_answer TEXT NOT NULL,
+      user_input TEXT,
+      is_correct INTEGER NOT NULL DEFAULT 0,
+      is_skipped INTEGER NOT NULL DEFAULT 0,
+      is_timeout INTEGER NOT NULL DEFAULT 0,
+      playback_count INTEGER DEFAULT 0,
+      answer_duration_ms INTEGER,
+      answered_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (word_id) REFERENCES words(id) ON DELETE CASCADE,
+      FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_answer_records_user_time ON answer_records(user_id, answered_at);
+    CREATE INDEX IF NOT EXISTS idx_answer_records_word_time ON answer_records(word_id, answered_at);
+    CREATE INDEX IF NOT EXISTS idx_answer_records_session ON answer_records(session_id);
+
+    CREATE TABLE IF NOT EXISTS wrong_words (
+      user_id TEXT NOT NULL,
+      word_id INTEGER NOT NULL,
+      total_wrong_count INTEGER NOT NULL DEFAULT 0,
+      consecutive_correct_count INTEGER NOT NULL DEFAULT 0,
+      consecutive_wrong_count INTEGER NOT NULL DEFAULT 0,
+      latest_wrong_answer TEXT,
+      latest_wrong_at INTEGER,
+      error_type TEXT,
+      status TEXT NOT NULL DEFAULT 'to_consolidate',
+      is_important INTEGER NOT NULL DEFAULT 0,
+      last_answer_record_id TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, word_id),
+      FOREIGN KEY (word_id) REFERENCES words(id) ON DELETE CASCADE,
+      FOREIGN KEY (last_answer_record_id) REFERENCES answer_records(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_wrong_words_status ON wrong_words(user_id, status, updated_at);
+    CREATE INDEX IF NOT EXISTS idx_wrong_words_latest_wrong ON wrong_words(user_id, latest_wrong_at);
+
+    CREATE TABLE IF NOT EXISTS word_memory (
+      user_id TEXT NOT NULL,
+      word_id INTEGER NOT NULL,
+      state TEXT NOT NULL DEFAULT 'unlearned',
+      consecutive_correct_count INTEGER NOT NULL DEFAULT 0,
+      consecutive_wrong_count INTEGER NOT NULL DEFAULT 0,
+      last_practiced_at INTEGER,
+      next_review_time INTEGER,
+      review_interval_days INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, word_id),
+      FOREIGN KEY (word_id) REFERENCES words(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_word_memory_user_state ON word_memory(user_id, state, updated_at);
+    CREATE INDEX IF NOT EXISTS idx_word_memory_user_review ON word_memory(user_id, next_review_time);
   `);
 
   await ensureWordsColumn("dictation_attempts", "INTEGER DEFAULT 0");

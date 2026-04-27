@@ -13,18 +13,30 @@ const {
 const { createImportRoutes } = require("./src/routes/import.routes");
 const { createDictationRoutes } = require("./src/routes/dictation.routes");
 const { createLibraryRoutes } = require("./src/routes/library.routes");
+const { createWrongWordsRoutes } = require("./src/routes/wrong-words.routes");
+const { createReviewTaskRoutes } = require("./src/routes/review-task.routes");
+const { createLearningReportRoutes } = require("./src/routes/learning-report.routes");
 const { createImportController } = require("./src/controllers/import.controller");
 const { createDictationController } = require("./src/controllers/dictation.controller");
 const { createLibraryController } = require("./src/controllers/library.controller");
+const { createWrongWordsController } = require("./src/controllers/wrong-words.controller");
+const { createReviewTaskController } = require("./src/controllers/review-task.controller");
+const { createLearningReportController } = require("./src/controllers/learning-report.controller");
 const { createImportService } = require("./src/services/import.service");
 const { createParserService } = require("./src/services/parser.service");
 const { createPaddleOcrService } = require("./src/services/paddle-ocr.service");
 const { createDictationService } = require("./src/services/dictation.service");
 const { createLibraryService } = require("./src/services/library.service");
 const { createBooksService } = require("./src/services/books.service");
+const { createWrongWordsService } = require("./src/services/wrong-words.service");
+const { createReviewTaskService } = require("./src/services/review-task.service");
+const { createLearningReportService } = require("./src/services/learning-report.service");
 const textProcessingService = require("./src/services/text-processing.service");
 const wordRepository = require("./src/repositories/word.repository");
 const bookRepository = require("./src/repositories/book.repository");
+const answerRecordRepository = require("./src/repositories/answer-record.repository");
+const wrongWordRepository = require("./src/repositories/wrong-word.repository");
+const wordMemoryRepository = require("./src/repositories/word-memory.repository");
 const dictationSessionRepository = require("./src/repositories/dictation-session.repository");
 const dictationSelectionRepository = require("./src/repositories/dictation-selection.repository");
 const { createBooksController } = require("./src/controllers/books.controller");
@@ -74,6 +86,9 @@ async function bootstrap() {
     dictationSessionRepository,
     dictationSelectionRepository,
     wordRepository,
+    answerRecordRepository,
+    wrongWordRepository,
+    wordMemoryRepository,
   });
   const libraryService = createLibraryService({
     wordRepository,
@@ -81,6 +96,20 @@ async function bootstrap() {
   });
   const booksService = createBooksService({
     bookRepository,
+  });
+  const wrongWordsService = createWrongWordsService({
+    wrongWordRepository,
+  });
+  const reviewTaskService = createReviewTaskService({
+    wordRepository,
+    wrongWordRepository,
+    wordMemoryRepository,
+  });
+  const learningReportService = createLearningReportService({
+    answerRecordRepository,
+    wrongWordRepository,
+    wordMemoryRepository,
+    reviewTaskService,
   });
   const importController = createImportController({
     importService,
@@ -102,10 +131,26 @@ async function bootstrap() {
     readJsonBody,
     sendJson,
   });
+  const wrongWordsController = createWrongWordsController({
+    wrongWordsService,
+    readJsonBody,
+    sendJson,
+  });
+  const reviewTaskController = createReviewTaskController({
+    reviewTaskService,
+    sendJson,
+  });
+  const learningReportController = createLearningReportController({
+    learningReportService,
+    sendJson,
+  });
   const importRoutes = createImportRoutes({ importController });
   const dictationRoutes = createDictationRoutes({ dictationController });
   const libraryRoutes = createLibraryRoutes({ libraryController });
   const booksRoutes = createBooksRoutes({ booksController });
+  const wrongWordsRoutes = createWrongWordsRoutes({ wrongWordsController });
+  const reviewTaskRoutes = createReviewTaskRoutes({ reviewTaskController });
+  const learningReportRoutes = createLearningReportRoutes({ learningReportController });
 
   const server = http.createServer(async (request, response) => {
     try {
@@ -120,7 +165,18 @@ async function bootstrap() {
       }
 
       if (url.pathname.startsWith("/api/")) {
-        return handleApi(request, response, url, importRoutes, dictationRoutes, libraryRoutes, booksRoutes);
+        return handleApi(
+          request,
+          response,
+          url,
+          importRoutes,
+          dictationRoutes,
+          libraryRoutes,
+          booksRoutes,
+          wrongWordsRoutes,
+          reviewTaskRoutes,
+          learningReportRoutes,
+        );
       }
 
       return serveStatic(response, url.pathname);
@@ -134,7 +190,18 @@ async function bootstrap() {
   });
 }
 
-async function handleApi(request, response, url, importRoutes, dictationRoutes, libraryRoutes, booksRoutes) {
+async function handleApi(
+  request,
+  response,
+  url,
+  importRoutes,
+  dictationRoutes,
+  libraryRoutes,
+  booksRoutes,
+  wrongWordsRoutes,
+  reviewTaskRoutes,
+  learningReportRoutes,
+) {
   if (await importRoutes.handle(request, response, url)) {
     return;
   }
@@ -145,6 +212,15 @@ async function handleApi(request, response, url, importRoutes, dictationRoutes, 
     return;
   }
   if (await booksRoutes.handle(request, response, url)) {
+    return;
+  }
+  if (await wrongWordsRoutes.handle(request, response, url)) {
+    return;
+  }
+  if (await reviewTaskRoutes.handle(request, response, url)) {
+    return;
+  }
+  if (await learningReportRoutes.handle(request, response, url)) {
     return;
   }
 

@@ -5,7 +5,7 @@
         <span class="brand-mark">HW</span>
         <div>
           <p class="brand-name">HearWords</p>
-          <p class="brand-subtitle">Vue 3 Frontend Shell</p>
+          <p class="brand-subtitle">听写记忆训练系统</p>
         </div>
       </div>
 
@@ -25,9 +25,9 @@
     <main class="content">
       <header class="content-header">
         <p class="eyebrow">HearWords</p>
-        <h1 class="title">前端壳层</h1>
+        <h1 class="title">听写记忆训练</h1>
         <p class="subtitle">
-          当前阶段仅完成页面骨架、路由与占位内容，为后续 API 接入和模块拆分预留结构。
+          从今日任务开始，完成听写、整理错词，并把薄弱单词带回后续复习计划。
         </p>
       </header>
 
@@ -57,6 +57,16 @@ const navItems = [
     to: '/books',
     label: '词书',
     description: '词书管理与成员查看'
+  },
+  {
+    to: '/wrong-words',
+    label: '错词本',
+    description: '薄弱单词与复习卡片'
+  },
+  {
+    to: '/report',
+    label: '学习报告',
+    description: '今日概览与薄弱建议'
   },
   {
     to: '/dictation',

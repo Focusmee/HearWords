@@ -1,7 +1,7 @@
 <template>
   <SectionCard
     title="听写模块占位"
-    eyebrow="Dictation"
+    eyebrow="听写"
     description="后续将在这里串联播放控制、输入区、进度展示与结果总结。"
   >
     <div class="placeholder-grid">

@@ -1,7 +1,7 @@
 <template>
   <SectionCard
     title="词库"
-    eyebrow="Library"
+    eyebrow="词库"
     description="总词库查询、编辑、删除；并支持从总词库批量加入词书（N:M）"
   >
     <template #header-extra>
@@ -41,7 +41,7 @@
         </label>
 
         <label class="library-header__field">
-          <span>Book</span>
+          <span>词书</span>
           <select v-model="filters.bookName" class="library-header__select" :disabled="isLoading">
             <option value="">全部</option>
             <option v-for="item in bookNameOptions" :key="item" :value="item">{{ item }}</option>
@@ -49,19 +49,19 @@
         </label>
 
         <label class="library-header__field">
-          <span>Source</span>
+          <span>来源</span>
           <select v-model="filters.sourceName" class="library-header__select" :disabled="isLoading">
             <option value="">全部</option>
-            <option v-for="item in sourceNameOptions" :key="item" :value="item">{{ item }}</option>
+            <option v-for="item in sourceNameOptions" :key="item" :value="item">{{ formatSourceName(item) }}</option>
           </select>
         </label>
 
         <label class="library-header__field">
-          <span>Search</span>
+          <span>搜索</span>
           <input
             v-model.trim="filters.query"
             class="library-header__input"
-            placeholder="lemma/rawWord/definition"
+            placeholder="标准词 / 原词 / 释义"
             :disabled="isLoading"
             @keydown.enter="applyFilters"
           />
@@ -84,11 +84,11 @@
       <div class="library-table">
         <div class="library-table__head">
           <span></span>
-          <span>Lemma</span>
-          <span>Raw</span>
-          <span>POS</span>
-          <span>Definition</span>
-          <span>Actions</span>
+          <span>标准词</span>
+          <span>原词</span>
+          <span>词性</span>
+          <span>释义</span>
+          <span>操作</span>
         </div>
 
         <div v-if="items.length === 0" class="library-table__empty">
@@ -141,7 +141,7 @@
 
         <div class="library-pagination__center">
           <label class="library-pagination__field">
-            <span>Page</span>
+            <span>页码</span>
             <input v-model.number="pageInput" class="library-pagination__input" type="number" min="1" :max="pageCount" :disabled="isLoading" />
           </label>
           <button type="button" class="library-pagination__btn" :disabled="isLoading" @click="goPage(pageInput)">
@@ -149,7 +149,7 @@
           </button>
 
           <label class="library-pagination__field">
-            <span>Size</span>
+            <span>每页数量</span>
             <select v-model.number="pagination.pageSize" class="library-pagination__select" :disabled="isLoading" @change="applyPageSize">
               <option :value="20">20</option>
               <option :value="50">50</option>
@@ -181,11 +181,11 @@
 
         <div class="modal__body">
           <label class="modal__field">
-            <span>definition</span>
+            <span>释义</span>
             <textarea v-model="editor.definition" class="modal__textarea" rows="4" :disabled="editor.saving" />
           </label>
           <label class="modal__field">
-            <span>exampleSentence</span>
+            <span>例句</span>
             <textarea v-model="editor.exampleSentence" class="modal__textarea" rows="4" :disabled="editor.saving" />
           </label>
           <p v-if="editor.error" class="modal__error">{{ editor.error }}</p>
@@ -316,6 +316,13 @@ function applyPageSize() {
   pageInput.value = 1
   selectedSet.value = new Set()
   load()
+}
+
+function formatSourceName(value) {
+  const sourceName = String(value || '').trim()
+  if (!sourceName || sourceName === 'manual-input') return '手动输入'
+  if (sourceName === 'library-add') return '从词库加入'
+  return sourceName
 }
 
 function goPage(page) {

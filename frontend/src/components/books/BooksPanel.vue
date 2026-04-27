@@ -1,5 +1,5 @@
 <template>
-  <SectionCard title="词书" eyebrow="Books" description="词书作为独立实体；查看成员、移除成员、创建新词书。">
+  <SectionCard title="词书" eyebrow="词书" description="词书作为独立实体；查看成员、移除成员、创建新词书。">
     <template #header-extra>
       <div class="books-header">
         <label class="books-header__field">
@@ -47,9 +47,9 @@
       <div v-else class="books-table">
         <div class="books-table__head">
           <span></span>
-          <span>Lemma</span>
-          <span>Definition</span>
-          <span>Actions</span>
+          <span>标准词</span>
+          <span>释义</span>
+          <span>操作</span>
         </div>
 
         <div v-if="words.length === 0" class="books-table__empty">该词书暂无成员</div>
