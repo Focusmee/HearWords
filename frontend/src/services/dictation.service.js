@@ -1,7 +1,7 @@
 import { http } from '@/services/http.js'
 
 export const dictationService = {
-  startSession({ includedBookNames, bookNames, wordIds, scope } = {}) {
+  startSession({ includedBookNames, bookNames, wordIds, scope, taskItems } = {}) {
     const payload = {}
     const books = Array.isArray(includedBookNames) ? includedBookNames : bookNames
     if (Array.isArray(books) && books.length) {
@@ -13,7 +13,17 @@ export const dictationService = {
     if (scope) {
       payload.scope = scope
     }
+    if (Array.isArray(taskItems) && taskItems.length) {
+      payload.taskItems = taskItems
+    }
     return http.post('/api/dictation/start', payload)
+  },
+  getTodayTask({ intensity = 'standard', bookName = '' } = {}) {
+    const params = new URLSearchParams()
+    if (intensity) params.set('intensity', intensity)
+    if (bookName) params.set('bookName', bookName)
+    const query = params.toString()
+    return http.get(`/api/review/today-task${query ? `?${query}` : ''}`)
   },
   getSession() {
     return http.get('/api/dictation/session')
@@ -21,10 +31,10 @@ export const dictationService = {
   resetSession() {
     return http.delete('/api/dictation/session')
   },
-  checkAnswer({ answer }) {
-    return http.post('/api/dictation/check', { answer })
+  checkAnswer({ answer, answerDurationMs }) {
+    return http.post('/api/dictation/check', { answer, answerDurationMs })
   },
-  skipCurrent() {
-    return http.post('/api/dictation/skip')
+  skipCurrent({ answerDurationMs } = {}) {
+    return http.post('/api/dictation/skip', { answerDurationMs })
   }
 }

@@ -1,28 +1,28 @@
 <template>
   <SectionCard
     title="导入模块"
-    eyebrow="Import"
+    eyebrow="导入"
     description="文件（txt / pdf / doc(x) / 图片）→ 提取 / OCR → 解析候选词 → 勾选 → 导入词库"
   >
     <template #header-extra>
       <div class="import-header">
         <label class="import-header__field">
-          <span>Source</span>
+          <span>来源</span>
           <input
             v-model.trim="sourceName"
             class="import-header__input"
-            placeholder="manual-input"
+            placeholder="例如：手动输入"
             list="source-options"
           />
           <datalist id="source-options">
-            <option v-for="name in sourceNameOptions" :key="name" :value="name" />
+            <option v-for="name in sourceNameOptions" :key="name" :value="name" :label="formatSourceName(name)" />
           </datalist>
         </label>
         <label class="import-header__field">
-          <span>Mode</span>
+          <span>解析模式</span>
           <select v-model="mode" class="import-header__select">
-            <option value="normal">normal</option>
-            <option value="enhanced">enhanced</option>
+            <option value="normal">普通</option>
+            <option value="enhanced">增强</option>
           </select>
         </label>
         <label class="import-header__field">
@@ -135,8 +135,8 @@ import { appService } from '@/services/app.service.js'
 import { settingsService } from '@/services/settings.service.js'
 import { libraryService } from '@/services/library.service.js'
 
-const defaultPreviewText = `Welcome to HearWords.
-Paste text here, or upload a file, then click “解析候选词”.`
+const defaultPreviewText = `欢迎使用 HearWords。
+你可以在这里粘贴文本，或上传文件，然后点击“解析候选词”。`
 
 const selectedFile = ref(null)
 const previewText = ref(defaultPreviewText)
@@ -147,7 +147,7 @@ const warningMessage = ref('')
 const errorMessage = ref('')
 const isLoading = ref(false)
 
-const sourceName = ref('manual-input')
+const sourceName = ref('手动输入')
 const mode = ref('normal')
 const parseLimit = ref(300)
 const parseLimitMax = ref(2000)
@@ -190,7 +190,7 @@ async function handleFileSelected(file) {
       const base64 = await readFileAsBase64(file)
       const ocr = await importService.ocrImage({ imageBase64: base64, filename: file.name })
       previewText.value = ocr?.text || ''
-      saveMessage.value = `OCR 完成（confidence: ${Math.round(Number(ocr?.confidence || 0))}）`
+      saveMessage.value = `OCR 完成（可信度：${Math.round(Number(ocr?.confidence || 0))}）`
       return
     }
 
@@ -206,7 +206,7 @@ async function handleFileSelected(file) {
     if (typeof extracted?.sourceName === 'string' && extracted.sourceName.trim()) {
       sourceName.value = extracted.sourceName.trim()
     }
-    saveMessage.value = `已提取文档文本（${Number(extracted?.characterCount || 0)} chars）`
+    saveMessage.value = `已提取文档文本（${Number(extracted?.characterCount || 0)} 个字符）`
   } catch (error) {
     errorMessage.value = error.message || '文件处理失败'
     saveMessage.value = '文件处理失败，请检查后端服务是否启动。'
@@ -366,6 +366,12 @@ function applyAutoSelect() {
     return String(a.lemma || '').localeCompare(String(b.lemma || ''))
   })
   selectedWordIds.value = sorted.slice(0, Math.min(count, sorted.length)).map((item) => item.id)
+}
+
+function formatSourceName(value) {
+  const sourceName = String(value || '').trim()
+  if (!sourceName || sourceName === 'manual-input') return '手动输入'
+  return sourceName
 }
 
 function isTextFile(file) {

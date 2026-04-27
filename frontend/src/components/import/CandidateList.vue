@@ -56,7 +56,7 @@
           </button>
         </div>
         <span class="candidate-list__source">
-          {{ word.pos ? `${word.pos} · ` : '' }}{{ word.sourceName || 'manual-input' }}
+          {{ word.pos ? `${word.pos} · ` : '' }}{{ formatSourceName(word.sourceName) }}
         </span>
       </li>
     </ul>
@@ -103,6 +103,12 @@ function shouldShowToggle(word) {
   const definition = String(word?.definition || '')
   const example = String(word?.exampleSentence || '')
   return definition.length > 90 || example.length > 90
+}
+
+function formatSourceName(value) {
+  const sourceName = String(value || '').trim()
+  if (!sourceName || sourceName === 'manual-input') return '手动输入'
+  return sourceName
 }
 </script>
 

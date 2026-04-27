@@ -4,6 +4,8 @@ import ImportView from '@/views/ImportView.vue'
 import LibraryView from '@/views/LibraryView.vue'
 import DictationView from '@/views/DictationView.vue'
 import BooksView from '@/views/BooksView.vue'
+import WrongWordsView from '@/views/WrongWordsView.vue'
+import LearningReportView from '@/views/LearningReportView.vue'
 
 const routes = [
   {
@@ -36,6 +38,22 @@ const routes = [
     component: BooksView,
     meta: {
       title: '词书'
+    }
+  },
+  {
+    path: '/wrong-words',
+    name: 'wrong-words',
+    component: WrongWordsView,
+    meta: {
+      title: '错词本'
+    }
+  },
+  {
+    path: '/report',
+    name: 'learning-report',
+    component: LearningReportView,
+    meta: {
+      title: '学习报告'
     }
   },
   {

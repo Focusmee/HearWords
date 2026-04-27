@@ -38,9 +38,10 @@ function createDictationController({ dictationService, readJsonBody, sendJson })
       }
     },
 
-    async handleSkip(_request, response) {
+    async handleSkip(request, response) {
       try {
-        const payload = await dictationService.skipCurrent();
+        const body = await readJsonBody(request);
+        const payload = await dictationService.skipCurrent(body);
         return sendJson(response, 200, payload);
       } catch (error) {
         return sendJson(response, error.statusCode || 500, { error: error.message || "服务器异常" });
@@ -52,4 +53,3 @@ function createDictationController({ dictationService, readJsonBody, sendJson })
 module.exports = {
   createDictationController,
 };
-
